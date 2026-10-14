@@ -1,4 +1,4 @@
-import { Skeleton, SkeletonProps } from '@chakra-ui/react';
+import { Skeleton, SkeletonProps } from 'bako-ui';
 import { ReactNode } from 'react';
 
 interface CustomSkeletonProps extends SkeletonProps {
@@ -9,15 +9,15 @@ interface CustomSkeletonProps extends SkeletonProps {
 
 const CustomSkeleton = ({
   children,
-  isLoaded,
+  // customEndColor,
+  // customStartColor,
   ...props
 }: CustomSkeletonProps) => (
   <Skeleton
     w="100%"
-    speed={1}
-    startColor={props.customStartColor ?? 'dark.200'}
-    endColor={props.customEndColor ?? 'dark.500'}
-    isLoaded={isLoaded}
+    // speed={1}
+    // startColor={customStartColor ?? 'dark.200'}
+    // endColor={customEndColor ?? 'dark.500'}
     borderRadius={10}
     {...props}
   >

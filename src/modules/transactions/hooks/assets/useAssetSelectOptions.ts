@@ -1,3 +1,4 @@
+import { AssetSelectOption } from '@/components';
 import {
   AddressUtils,
   Asset,
@@ -6,7 +7,8 @@ import {
   useGetTokenInfosArray,
   useSortTokenInfosArray,
 } from '@/modules/core';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import { parseURI } from '@/modules/core/utils/formatter';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
 import { ITransactionField } from '../create/useCreateTransactionForm';
 
@@ -15,16 +17,21 @@ interface UseAssetSelectOptionsProps {
   assets?: Asset[];
   nfts?: NFT[];
   recipients?: ITransactionField[];
+  getBalanceAvailable: (assetValue: string) => string;
 }
 
 const formatAsset = (asset: Asset) => ({
-  label: `${asset.slug} - ${asset.name}`,
+  name: asset.name,
+  symbol: asset.slug,
   value: asset.assetId,
+  image: asset.icon || null,
 });
 
 const formatNFT = (nft: NFT) => ({
-  label: `NFT - ${AddressUtils.format(nft.assetId ?? '', 20)}`,
   value: nft.assetId,
+  image: nft.image ? parseURI(nft.image) : null,
+  name: nft.name ?? AddressUtils.format(nft.assetId, 10),
+  symbol: nft.symbol ?? null,
 });
 
 const filterNFTs = (
@@ -42,8 +49,12 @@ const filterNFTs = (
   return filteredNFTs;
 };
 
-const useAssetSelectOptions = (props: UseAssetSelectOptionsProps) => {
-  const { currentAsset, recipients, assets, nfts } = props;
+const useAssetSelectOptions = (
+  props: UseAssetSelectOptionsProps,
+): {
+  assetsOptions: AssetSelectOption[];
+} => {
+  const { currentAsset, recipients, assets, nfts, getBalanceAvailable } = props;
 
   const { assetsMap } = useWorkspaceContext();
 
@@ -54,7 +65,22 @@ const useAssetSelectOptions = (props: UseAssetSelectOptionsProps) => {
   const sortedAssets = useSortTokenInfosArray(_assets, assetsMap);
   const formattedAssets = sortedAssets.map(formatAsset);
 
-  return { assetsOptions: [...formattedAssets, ...formattedNFTs] };
+  const filteredAssets = formattedAssets.filter((asset) => {
+    const balanceAvailableForAsset = parseFloat(
+      getBalanceAvailable(asset.value),
+    );
+
+    return balanceAvailableForAsset > 0;
+  });
+
+  const options = [...filteredAssets, ...formattedNFTs];
+
+  const assetsOptions = options.map((option) => ({
+    ...option,
+    image: option.image ?? (assetsMap?.UNKNOWN?.icon || ''),
+  }));
+
+  return { assetsOptions };
 };
 
 export { useAssetSelectOptions };

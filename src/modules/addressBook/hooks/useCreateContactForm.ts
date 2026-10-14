@@ -1,5 +1,5 @@
 import { yupResolver } from '@hookform/resolvers/yup';
-import { BakoProvider } from 'bakosafe';
+import { AddressUtils as BakoAddressUtils, BakoProvider } from 'bakosafe';
 import { Assets } from 'fuels';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
@@ -13,17 +13,33 @@ const useCreateContactForm = (
 ) => {
   const assetIdsAndAddresses = fuelsTokens?.flatMap((item) => {
     return item.networks
-      ?.map((network) => network['assetId'] ?? network['address'])
+      ?.map(
+        (network) =>
+          ('assetId' in network && network['assetId']) ||
+          ('address' in network && network['address']),
+      )
       .filter(Boolean);
   });
 
   const schema = yup.object({
-    nickname: yup.string().required('Name is required.'),
+    nickname: yup
+      .string()
+      .test(
+        'not-only-spaces',
+        'Name cannot contain only spaces.',
+        (value) => !!value && value.trim().length > 0,
+      )
+      .required('Name is required.'),
     handle: yup.string().optional(),
     resolver: yup.string().optional(),
     address: yup
       .string()
       .required('Address is required.')
+      .test(
+        'not-only-spaces',
+        'Address cannot contain only spaces.',
+        (value) => !value || value.trim().length > 0,
+      )
       .test(
         'is-valid-address',
         'This address can not receive assets from Bako.',
@@ -39,6 +55,9 @@ const useCreateContactForm = (
             const isValid =
               AddressUtils.isValid(address) && !isAssetIdOrAssetAddress;
             if (!isValid) return false;
+
+            const isEvm = BakoAddressUtils.isEvm(address);
+            if (isEvm) return false;
 
             const provider = await providerInstance;
 
@@ -63,6 +82,13 @@ const useCreateContactForm = (
   return {
     form,
   };
+};
+
+export type ICreateContactFormData = {
+  nickname: string;
+  address: string;
+  handle?: string;
+  resolver?: string;
 };
 
 export { useCreateContactForm };

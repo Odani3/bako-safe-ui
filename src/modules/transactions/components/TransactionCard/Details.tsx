@@ -1,13 +1,24 @@
-import { Box, Button, Icon, Stack, VStack } from '@chakra-ui/react';
-import { css } from '@emotion/react';
+import { Box, Button, Flex, HStack, Stack, Text, VStack } from 'bako-ui';
 import { TransactionStatus, TransactionType } from 'bakosafe';
+import { parseISO } from 'date-fns';
+import { enUS } from 'date-fns/locale';
+import { formatInTimeZone } from 'date-fns-tz';
+import { memo, useCallback, useMemo, useState } from 'react';
 
-import { CustomSkeleton, UpRightArrow } from '@/components';
-import { shakeAnimationY, type TransactionState } from '@/modules/core';
+import { CustomSkeleton, FileCodeIcon, UpRightArrow } from '@/components';
+import { TrashIcon } from '@/components/icons/trash';
+import env from '@/config/env';
+import { type TransactionState } from '@/modules/core';
 import type { ITransaction } from '@/modules/core/hooks/bakosafe/utils/types';
 import { NetworkService } from '@/modules/network/services';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import { useTransactionsContext } from '@/modules/transactions/providers/TransactionsProvider';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
+import {
+  ON_OFF_RAMP_TRANSACTION_TYPES,
+  TransactionTypeBridge,
+  TransactionTypeWithRamp,
+} from '../../services';
 import { AssetBoxInfo } from './AssetBoxInfo';
 import { DepositDetails } from './deposit-details/DepositDetails';
 import DetailsTransactionStepper from './DetailsTransactionStepper';
@@ -21,117 +32,200 @@ export type TransactionUI = Omit<ITransaction, 'assets'> & {
     to: string;
     recipientNickname?: string;
   }[];
-  type: TransactionType;
+  type: TransactionType | TransactionTypeWithRamp | TransactionTypeBridge;
+};
+
+interface CancelTransactionButtonProps {
+  transaction: TransactionUI;
+}
+
+const CancelTransactionButton = ({
+  transaction,
+}: CancelTransactionButtonProps) => {
+  const {
+    signTransaction: { isLoading: isSigningTransaction },
+    cancelTransaction: {
+      isPending: isCancelingTransaction,
+      mutate: cancelTransaction,
+    },
+  } = useTransactionsContext();
+
+  const [isLocalLoading, setIsLocalLoading] = useState(false);
+  const [isClicked, setIsClicked] = useState(false);
+
+  const isCancelable = useMemo(
+    () => transaction.status === TransactionStatus.AWAIT_REQUIREMENTS,
+    [transaction.status],
+  );
+
+  if (!isCancelable) return null;
+
+  const handleCancel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    setIsClicked(true);
+    setIsLocalLoading(true);
+
+    cancelTransaction(transaction.hash, {
+      onSettled: () => {
+        setIsLocalLoading(false);
+      },
+    });
+  };
+
+  return (
+    <Button
+      h={9}
+      px={3}
+      colorPalette="red"
+      size="sm"
+      loading={isLocalLoading}
+      disabled={isSigningTransaction || (!isClicked && isCancelingTransaction)}
+      onClick={handleCancel}
+    >
+      <TrashIcon boxSize={4} />
+      Cancel transaction
+    </Button>
+  );
 };
 
 interface TransactionDetailsProps {
   transaction: TransactionUI;
   status?: TransactionState;
-  isInTheVaultPage?: boolean;
   isMobile?: boolean;
   isMobileDetailsOpen?: boolean;
 }
 
-const Details = ({
-  transaction,
-  status,
-  isInTheVaultPage,
-  isMobileDetailsOpen,
-}: TransactionDetailsProps) => {
-  const isDeposit = transaction.type === TransactionType.DEPOSIT;
-  const {
-    screenSizes: { isMobile },
-  } = useWorkspaceContext();
-
-  const handleViewInExplorer = () => {
-    const { hash, network } = transaction;
-    window.open(
-      `${NetworkService.getExplorer(network.url)}/tx/0x${hash}`,
-      '_BLANK',
+const Details = memo(
+  ({ transaction, status, isMobileDetailsOpen }: TransactionDetailsProps) => {
+    const isDeposit = useMemo(
+      () => transaction.type === TransactionType.DEPOSIT,
+      [transaction.type],
     );
-  };
+    const isOnOffRamp = useMemo(
+      () => ON_OFF_RAMP_TRANSACTION_TYPES.includes(transaction.type),
+      [transaction.type],
+    );
 
-  return (
-    <DetailsTransactionStepper
-      transactionId={transaction.id}
-      predicateId={transaction.predicateId}
-      isMobileDetailsOpen={isMobileDetailsOpen ?? false}
-      isTransactionSuccess={transaction.status === TransactionStatus.SUCCESS}
-      isDeposit={isDeposit}
-    >
-      {(isLoading, transactionHistory) => (
-        <CustomSkeleton
-          py={2}
-          isLoaded={isDeposit ? true : !isLoading && !!transactionHistory}
-        >
-          {isDeposit ? (
-            <DepositDetails transaction={transaction} />
-          ) : (
-            <VStack w="full">
-              <Stack
-                pt={{ base: 0, sm: 5 }}
-                alignSelf="flex-start"
-                display="flex"
-                direction={{ base: 'column', md: 'row' }}
-                alignItems="start"
-                justify="space-between"
-                columnGap={{
-                  base: isInTheVaultPage ? '3rem' : '72px',
-                  lg: '150px',
-                }}
-                w="full"
-              >
-                {/* Transaction Breakdown */}
-                <TransactionBreakdown
-                  transaction={transaction}
-                  status={status}
-                />
+    const {
+      screenSizes: { isMobile },
+    } = useWorkspaceContext();
 
-                {/* Transaction History */}
-                <Box
-                  alignSelf="flex-start"
-                  w="full"
-                  minW={{ base: 200, sm: 'full' }}
-                  mt={isMobile ? 3 : 'unset'}
-                >
-                  <TransactionStepper steps={transactionHistory ?? []} />
-                </Box>
-              </Stack>
+    const handleViewInExplorer = useCallback(() => {
+      const { hash, network } = transaction;
+      window.open(
+        `${NetworkService.getExplorer(network.url)}/tx/0x${hash}`,
+        '_BLANK',
+      );
+    }, [transaction]);
 
-              {transaction.status === TransactionStatus.SUCCESS &&
-                !isMobile && (
-                  <Button
-                    border="none"
-                    bgColor="#F5F5F50D"
-                    fontSize="xs"
-                    fontWeight="normal"
-                    letterSpacing=".5px"
-                    alignSelf={{ base: 'stretch', sm: 'flex-end' }}
-                    variant="secondary"
-                    onClick={handleViewInExplorer}
-                    css={css`
-                      &:hover .btn-icon {
-                        animation: ${shakeAnimationY} 0.5s ease-in-out;
-                      }
-                    `}
-                    rightIcon={
-                      <Icon
-                        as={UpRightArrow}
-                        textColor="grey.75"
-                        fontSize="lg"
-                        className="btn-icon"
-                      />
-                    }
+    return (
+      <DetailsTransactionStepper
+        transactionId={transaction.id}
+        predicateId={transaction.predicateId}
+        isMobileDetailsOpen={isMobileDetailsOpen ?? false}
+        isTransactionSuccess={transaction.status === TransactionStatus.SUCCESS}
+        isDeposit={isDeposit}
+      >
+        {(isLoading, transactionHistory) => (
+          <CustomSkeleton py={2} loading={isLoading && !transactionHistory}>
+            <>
+              {isDeposit ? (
+                <DepositDetails transaction={transaction} />
+              ) : (
+                <VStack w="full">
+                  <Stack
+                    pt={{ base: 0, sm: 5 }}
+                    alignSelf="flex-start"
+                    display="flex"
+                    direction={{ base: 'column', md: 'row' }}
+                    alignItems="start"
+                    justify="space-between"
+                    columnGap={6}
+                    w="full"
                   >
-                    View on Explorer
-                  </Button>
-                )}
-            </VStack>
-          )}
-        </CustomSkeleton>
-      )}
-    </DetailsTransactionStepper>
-  );
-};
+                    {/* Transaction Breakdown */}
+                    <TransactionBreakdown
+                      transaction={transaction}
+                      status={status}
+                    />
+
+                    {/* Transaction History */}
+                    {!isOnOffRamp && (
+                      <Box
+                        alignSelf="flex-start"
+                        w="full"
+                        minW={{ base: 200 }}
+                        mt={isMobile ? 3 : 'unset'}
+                      >
+                        <TransactionStepper steps={transactionHistory ?? []} />
+                      </Box>
+                    )}
+                  </Stack>
+
+                  <Flex justify="space-between" width="100%" align="center">
+                    {/* LADO ESQUERDO */}
+                    {!isMobile && !isDeposit && (
+                      <Box>
+                        <Text color="gray.400" fontSize="xs">
+                          {formatInTimeZone(
+                            parseISO(transaction.createdAt),
+                            Intl.DateTimeFormat().resolvedOptions().timeZone,
+                            'EEE, do MMM, hh:mm a',
+                            { locale: enUS },
+                          )}
+                        </Text>
+                      </Box>
+                    )}
+
+                    {/* LADO DIREITO */}
+                    <HStack gap={2}>
+                      {!isMobile && !isDeposit && (
+                        <a
+                          href={`${env.BASE_API_URL}/transaction/${transaction.id}/advanced-details`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ textDecoration: 'none' }}
+                        >
+                          <Button
+                            variant="subtle"
+                            alignSelf="flex-end"
+                            size="sm"
+                          >
+                            <FileCodeIcon boxSize={4} color="gray.200" />
+                            Advanced details
+                          </Button>
+                        </a>
+                      )}
+
+                      {!isMobile &&
+                        transaction.status === TransactionStatus.SUCCESS && (
+                          <Button
+                            variant="subtle"
+                            onClick={handleViewInExplorer}
+                            size="sm"
+                          >
+                            <UpRightArrow color="gray.200" boxSize={4} />
+                            Explorer
+                          </Button>
+                        )}
+
+                      {!isMobile && (
+                        <CancelTransactionButton transaction={transaction} />
+                      )}
+                    </HStack>
+                  </Flex>
+                </VStack>
+              )}
+            </>
+          </CustomSkeleton>
+        )}
+      </DetailsTransactionStepper>
+    );
+  },
+);
+
+Details.displayName = 'Transaction Details';
 
 export { AssetBoxInfo, Details };

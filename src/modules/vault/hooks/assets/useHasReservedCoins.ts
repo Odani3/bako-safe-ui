@@ -1,12 +1,12 @@
 import { QueryState, useQuery } from '@tanstack/react-query';
 
 import { queryClient } from '@/config/query-client';
+import { useMappedAssetStore } from '@/modules/assets-tokens/hooks/useAssetMap';
+import { localStorageKeys } from '@/modules/auth/services';
 
 import { HasReservedCoins, VaultService } from '../../services';
 import { vaultInfinityQueryKey } from '../list/useVaultTransactionsRequest';
 import { vaultAssetsQueryKey } from './useVaultAssets';
-import { WorkspaceService } from '@/modules/workspace/services';
-import { localStorageKeys } from '@/modules/auth/services';
 
 export const useHasReservedCoins = (
   predicateId: string,
@@ -28,7 +28,6 @@ export const useHasReservedCoins = (
     );
 
   const staleTime = 20 * 1000; // 20s
-  const refetchInterval = 5 * 60 * 1000; // 5m
 
   const { refetch, ...rest } = useQuery({
     queryKey: reservedQueryKey,
@@ -43,31 +42,43 @@ export const useHasReservedCoins = (
         queryClient.invalidateQueries({ queryKey: vaultTxListRequestQueryKey });
       }
 
-      const currentBalancePromises = response.currentBalance.map((item) => {
-        return WorkspaceService.getMyMappedTokens(
-          item.assetId,
-          chainId,
-          localStorageKeys.FUEL_MAPPED_TOKENS,
-        );
-      });
-      const nftsPromises = response.nfts.map((item) => {
-        return WorkspaceService.getMyMappedTokens(
-          item.assetId,
-          chainId,
-          localStorageKeys.FUEL_MAPPED_NFTS,
-        );
+      const assetStore = useMappedAssetStore.getState();
+
+      await assetStore.fetchAssets(
+        response.currentBalance.map((item) => item.assetId),
+        chainId,
+      );
+      const refreshedNfts = await assetStore.fetchNfts(
+        response.nfts.map((item) => item.assetId),
+        chainId,
+      );
+
+      const getImgNft = (assetId: string) =>
+        assetStore.mappedTokens[assetId]?.metadata?.['image'] ??
+        assetStore.mappedTokens[assetId]?.metadata?.['image:png'] ??
+        null;
+
+      const enrichedNfts = response.nfts.map((nft) => {
+        const mappedNft = refreshedNfts[nft.assetId];
+        const mappedAsset = assetStore.mappedTokens[nft.assetId];
+        const imgNft =
+          mappedNft?.metadata?.image ?? getImgNft(mappedNft?.assetId);
+
+        return {
+          ...nft,
+          name: mappedNft?.name ?? mappedAsset?.metadata?.name ?? null,
+          collection: mappedNft?.collection ?? null,
+          symbol: mappedNft?.symbol ?? null,
+          image: imgNft,
+        };
       });
 
-      await Promise.all([
-        Promise.all(currentBalancePromises),
-        Promise.all(nftsPromises),
-      ]);
-
-      return response;
+      return {
+        ...response,
+        nfts: enrichedNfts,
+      };
     },
-    refetchInterval,
     refetchOnWindowFocus: false,
-    placeholderData: (previousData) => previousData,
     enabled: !!predicateId,
     staleTime,
   });

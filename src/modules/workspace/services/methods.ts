@@ -1,8 +1,10 @@
 import { TransactionStatus } from 'bakosafe';
-import { assets, Assets, BN } from 'fuels';
+import { Assets, assets, BN } from 'fuels';
 
 import { api } from '@/config';
+import { useMappedAssetStore } from '@/modules/assets-tokens/hooks/useAssetMap';
 import {
+  AssetMap,
   IPagination,
   IPermission,
   IPermissions,
@@ -11,7 +13,8 @@ import {
   Workspace,
 } from '@/modules/core';
 import { ITransaction } from '@/modules/core/hooks/bakosafe/utils/types';
-import { localStorageKeys } from '@/modules/auth';
+import { FIAT_CURRENCIES_ASSET_MAP } from '@/modules/core/utils/fiat-currencies';
+import { request } from '@/utils/request';
 
 export interface IWitnesses {
   account: string;
@@ -164,15 +167,16 @@ export class WorkspaceService {
     }
 
     const data: Assets = await response.json();
-    const atual = window.localStorage.getItem(
-      localStorageKeys.FUEL_MAPPED_TOKENS,
-    );
-    const atualObj: Assets = JSON.parse(atual || '{}');
+    const atualObj = useMappedAssetStore.getState().mappedTokens;
 
-    return [...Object.values(atualObj).map((item) => item), ...data];
+    return [...Object.values(atualObj).map((item) => item), ...data] as Assets;
   }
 
-  static async getTokenFuelApi(assetId: string, chainId: number, key: string) {
+  static async getTokenFuelApi(assetId: string, chainId: number) {
+    const fiatCurrency = FIAT_CURRENCIES_ASSET_MAP[assetId];
+    if (fiatCurrency) {
+      return fiatCurrency;
+    }
     const _chainId: { [key: number]: string } = {
       [9889]: 'https://mainnet-explorer.fuel.network',
       [0]: 'https://explorer-indexer-testnet.fuel.network',
@@ -180,42 +184,9 @@ export class WorkspaceService {
 
     const url = `${_chainId[chainId]}/assets/${assetId}`;
 
-    const response = await fetch(url)
-      .then(async (res) => {
-        return await res.json();
-      })
-      .catch(() => {
-        return undefined;
-      });
+    const response = await request<AssetMap['']>(url);
 
-    const atual = window.localStorage.getItem(key);
-    const atualObj = JSON.parse(atual || '{}');
-
-    if (!response) {
-      return atualObj;
-    }
-
-    atualObj[assetId] = response;
-    window.localStorage.setItem(key, JSON.stringify(atualObj));
-
-    return atualObj;
-  }
-
-  static async getMyMappedTokens(
-    assetId: string,
-    chainId: number,
-    key: string,
-  ) {
-    const atual = window.localStorage.getItem(key);
-    const atualObj = JSON.parse(atual || '{}');
-
-    if (atualObj[assetId]) {
-      return atualObj[assetId];
-    }
-
-    const call = await WorkspaceService.getTokenFuelApi(assetId, chainId, key);
-
-    return call[assetId];
+    return response;
   }
 
   static async deleteMember(payload: DeleteWorkspaceMemberPayload) {

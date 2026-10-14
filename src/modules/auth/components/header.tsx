@@ -1,4 +1,4 @@
-import { Text, VStack } from '@chakra-ui/react';
+import { Text, VStack } from 'bako-ui';
 
 import { useScreenSize } from '@/modules/core';
 
@@ -11,7 +11,7 @@ const SignInHeader = ({ title, showDescription }: SignInHeaderProps) => {
   const { isMobile } = useScreenSize();
 
   return (
-    <VStack justifyContent="center" textAlign="center" w="full" spacing={2}>
+    <VStack justifyContent="center" textAlign="center" w="full" gap={2}>
       <Text
         fontSize={isMobile ? '2xl' : '32'}
         fontWeight="bold"
@@ -26,6 +26,7 @@ const SignInHeader = ({ title, showDescription }: SignInHeaderProps) => {
           lineHeight="16.94px"
           fontWeight={400}
           fontSize="sm"
+          aria-label="subtitle_login_page"
         >
           Choose your prefered login method
         </Text>

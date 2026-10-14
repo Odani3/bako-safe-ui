@@ -1,5 +1,6 @@
 import { bytesToHex } from '@noble/curves/abstract/utils';
 import { QueryObserverResult, RefetchOptions } from '@tanstack/react-query';
+import { TypeUser } from 'bakosafe';
 import { Address, Network, Provider } from 'fuels';
 
 import { api } from '@/config';
@@ -11,12 +12,7 @@ export enum Encoder {
   FUEL = 'FUEL',
   METAMASK = 'METAMASK',
   WEB_AUTHN = 'WEB_AUTHN',
-}
-
-export enum TypeUser {
-  FUEL = 'FUEL',
-  FULLET = 'FULLET',
-  WEB_AUTHN = 'WEB_AUTHN',
+  EVM = 'EVM',
 }
 
 export type SignWebAuthnPayload = {
@@ -25,11 +21,22 @@ export type SignWebAuthnPayload = {
   publicKey: string;
 };
 
+export type SignMessageWebAuthnPayload = {
+  signPayload: SignWebAuthnPayload;
+  address: string;
+  predicateVersion?: string;
+};
+
 export type SignInSignWebAuthnPayload = Omit<
   SignWebAuthnPayload,
   'publicKey'
 > & {
   name: string;
+};
+
+export type WalletSignMessagePayload = {
+  message: string;
+  predicateVersion?: string;
 };
 
 export type CreateUserResponse = {
@@ -41,6 +48,9 @@ export type CreateUserResponse = {
 export type UseSignInRequestParams = {
   code: string;
   type: TypeUser;
+  encoder?: Encoder;
+  account?: string;
+  signature?: string;
 };
 
 export type CreateUserPayload = {
@@ -58,8 +68,12 @@ export type SignInPayload = {
   encoder: Encoder;
   signature: string;
   digest: string;
-  userAddress?: string;
+  userAddress?: string | null;
   name?: string;
+};
+
+export type UserSettings = {
+  inactivesPredicates: string[];
 };
 
 export type SignInResponse = {
@@ -77,6 +91,7 @@ export type SignInResponse = {
     publicKey: string;
   };
   provider: string;
+  settings?: UserSettings;
 };
 
 export type GetByHardwareResponse = {
@@ -102,6 +117,7 @@ export type AuthenticateParams = {
   webAuthn?: Omit<SignWebAuthnPayload, 'challenge'>;
   provider_url: string;
   first_login?: boolean;
+  settings?: UserSettings;
 };
 
 export type AuthenticateWorkspaceParams = {
@@ -149,6 +165,7 @@ export type IGetUserInfosResponse = {
   type: UserType;
   webauthn: SignWebAuthnPayload;
   first_login?: boolean;
+  settings: UserSettings;
   workspace: {
     avatar: string;
     id: string;
@@ -158,6 +175,12 @@ export type IGetUserInfosResponse = {
   };
   network: Network;
 };
+
+interface IGetUserWalletResponse {
+  address: string;
+  configurable: string;
+  version: string;
+}
 
 export class UserService {
   static async create(payload: CreateUserPayload) {
@@ -221,6 +244,11 @@ export class UserService {
     return data;
   }
 
+  static async userWallet() {
+    const { data } = await api.get<IGetUserWalletResponse>('/user/wallet');
+    return data;
+  }
+
   static async createWebAuthnAccount(name: string) {
     const account = await createAccount(name, Address.fromRandom().toB256());
 
@@ -275,7 +303,10 @@ export const localStorageKeys = {
   SELECTED_CHAIN_ID: 'bakosafe/selected-chain-id',
   SELECTED_NETWORK: 'bakosafe/selected-network',
   FUEL_MAPPED_TOKENS: 'bakosafe/fuel-mapped-tokens',
+  FUEL_MAPPED_ASSETS: 'bakosafe/fuel-mapped-assets',
   FUEL_MAPPED_NFTS: 'bakosafe/fuel-mapped-nfts',
+  BAKO_ID_CACHE: 'bakosafe/bako-id-cache',
+  USERNAMES: 'bakosafe/usernames',
 };
 
 export const UserQueryKey = {

@@ -1,7 +1,12 @@
-import { ITransactionResume, TransactionType, Vault } from 'bakosafe';
+import { ITransactionResume, TransactionType, TypeUser, Vault } from 'bakosafe';
 import { Operation } from 'fuels';
 
-import { AssetModel, IPagination, TransactionStatus } from '@/modules/core';
+import {
+  AssetMap,
+  AssetModel,
+  IPagination,
+  TransactionStatus,
+} from '@/modules/core';
 import {
   ITransaction,
   SortOptionTx,
@@ -29,6 +34,20 @@ export enum TransactionHistoryType {
   SEND = 'SEND',
 }
 
+export enum TransactionTypeWithRamp {
+  ON_RAMP_DEPOSIT = 'ON_RAMP_DEPOSIT',
+  OFF_RAMP_WITHDRAW = 'OFF_RAMP_WITHDRAW',
+}
+
+export const ON_OFF_RAMP_TRANSACTION_TYPES: string[] = [
+  TransactionTypeWithRamp.ON_RAMP_DEPOSIT,
+  TransactionTypeWithRamp.OFF_RAMP_WITHDRAW,
+];
+
+export enum TransactionTypeBridge {
+  BRIDGE = 'BRIDGE',
+}
+
 export type ITransactionStatusFilter = TransactionStatus[] | string[] | string;
 
 export interface ITransactionHistory {
@@ -38,6 +57,7 @@ export interface ITransactionHistory {
     id: string;
     avatar: string;
     address: string;
+    type: TypeUser;
   };
 }
 
@@ -58,6 +78,7 @@ export interface TransactionDetails {
 export interface ITransactionPending {
   ofUser: number;
   transactionsBlocked: boolean;
+  pendingSignature: boolean;
 }
 
 export interface GetTransactionParams {
@@ -133,16 +154,21 @@ export type OperationWithAssets = Operation & {
   assetsSent?: { assetId?: string; amount?: string }[];
 };
 
+type TTransactionType =
+  | TransactionType
+  | TransactionTypeWithRamp
+  | TransactionTypeBridge;
+
 export type TransactionWithVault = ITransaction & {
   predicate?: PredicateAndWorkspace;
-  type: TransactionType;
+  type: TTransactionType;
 };
 export interface ITransactionWithType extends ITransaction {
-  type: TransactionType;
+  type: TTransactionType;
 }
 
-export interface ITransactionsGroupedByMonth {
-  monthYear: string;
+export interface ITransactionsGroupedByDay {
+  day: string;
   transactions: TransactionWithVault[];
 }
 
@@ -153,11 +179,40 @@ export interface ResolveTransactionCostInput {
     assetId: string;
   }[];
   vault: Vault;
+  assetsMap: AssetMap;
 }
 
 export enum TransactionOrderBy {
   CREATED_AT = 'createdAt',
   UPDATED_AT = 'updatedAt',
+}
+
+export interface ITransactionQueryOldData {
+  currentPage: number;
+  data: ITransaction[];
+  nextPage: number;
+  perPage: number;
+  prevPage: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface ITransactionQueryUpdatePage {
+  page?: number;
+  perPage?: number;
+  data: ITransaction[];
+}
+
+export interface ITransactionInfinityQueryData {
+  pageParams: ITransactionQueryUpdatePage;
+  pages: ITransactionQueryUpdatePage[];
+}
+
+export interface ITransactionReactQueryUpdate {
+  type: '[UPDATED]' | '[CREATED]' | '[CANCELED]';
+  transaction: ITransaction;
+  history: ITransactionHistory;
+  sessionId: string;
 }
 
 export type GetTransactionResponse = ITransaction;
@@ -173,5 +228,6 @@ export type GetTransactionPendingResponse = ITransactionPending;
 export type GetTransactionHistoryResponse = ITransactionHistory[];
 export type CreateTransactionResponse = ITransaction;
 export type SignerTransactionResponse = ITransactionResume;
+export type CancelTransactionResponse = ITransactionResume;
 export type TransferAsset = AssetModel;
 export type TransactionDetailUI = TransactionDetails;

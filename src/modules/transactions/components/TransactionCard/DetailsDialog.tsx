@@ -1,48 +1,46 @@
 import {
-  AccordionItem,
   Avatar,
   Button,
   Center,
   Heading,
   HStack,
   Icon,
+  Stack,
   VStack,
-} from '@chakra-ui/react';
+} from 'bako-ui';
 import { format } from 'date-fns';
 
 import {
   Dialog,
   DialogModalProps,
-  DownLeftArrowGreen,
+  FileCodeIcon,
   UpRightArrow,
-  UpRightArrowYellow,
 } from '@/components';
-import { ContractIcon } from '@/components/icons/tx-contract';
-import { DeployIcon } from '@/components/icons/tx-deploy';
+import env from '@/config/env';
 import { TransactionState } from '@/modules/core/models/transaction';
 import { NetworkService } from '@/modules/network/services';
 import {
   TransactionCard,
-  transactionStatus,
   useVerifyTransactionInformations,
 } from '@/modules/transactions';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
 import { useTransactionsContext } from '../../providers/TransactionsProvider';
 import { TransactionWithVault } from '../../services/types';
 
 interface DetailsDialogProps extends Omit<DialogModalProps, 'children'> {
   transaction: TransactionWithVault;
-  account: string;
   status: TransactionState;
   isInTheVaultPage?: boolean;
   isSigner: boolean;
   isContract: boolean;
   callBack?: () => void;
+  TransactionIcon: React.ElementType;
 }
 
 const DetailsDialog = ({ ...props }: DetailsDialogProps) => {
-  const { onClose, isOpen, transaction, account, status, isSigner } = props;
+  const { onOpenChange, open, transaction, status, isSigner, TransactionIcon } =
+    props;
   const {
     screenSizes: { isLowerThanFourHundredAndThirty },
   } = useWorkspaceContext();
@@ -55,7 +53,7 @@ const DetailsDialog = ({ ...props }: DetailsDialogProps) => {
     );
   };
 
-  const { isDeploy, isFromConnector, isDeposit, showAmountInformations } =
+  const { isDeposit, isMint, showAmountInformations } =
     useVerifyTransactionInformations(transaction);
 
   const {
@@ -67,48 +65,40 @@ const DetailsDialog = ({ ...props }: DetailsDialogProps) => {
     },
   } = useTransactionsContext();
 
-  const { isSigned, isCompleted, isDeclined, isReproved } = status;
+  const {
+    isSigned,
+    isCompleted,
+    isDeclined,
+    isReproved,
+    isCanceled,
+    isPendingProvider,
+    isError,
+  } = status;
 
   const awaitingAnswer =
-    !isSigned && !isDeclined && !isCompleted && !isReproved && transaction;
+    !isSigned &&
+    !isDeclined &&
+    !isCompleted &&
+    !isReproved &&
+    transaction &&
+    !isPendingProvider;
 
-  const showSignActions = awaitingAnswer && isSigner;
+  const showSignActions = awaitingAnswer && isSigner && !isCanceled && !isError;
 
   return (
-    <Dialog.Modal onClose={onClose} isOpen={isOpen}>
-      <Dialog.Body as={AccordionItem} borderTop="none">
+    <Dialog.Modal onOpenChange={onOpenChange} open={open}>
+      <Dialog.Body borderTop="none" pb="64px" px={1}>
         <Dialog.Header
-          onClose={onClose}
+          onClose={() => onOpenChange?.({ open: false })}
           w="full"
-          maxW={{ base: 480, xs: 'unset' }}
+          pt={6}
           title="Transaction Details"
         />
-        <VStack spacing={{ base: 3, xs: 5 }} display="block">
-          <VStack w="full" spacing={4} justifyContent="space-between">
+        <VStack gap={{ base: 3, sm: 5 }} display="block">
+          <VStack w="full" gap={4} justifyContent="space-between">
             <HStack w="full">
               <HStack minH="38px">
-                <Center
-                  borderRadius="4px"
-                  width={6}
-                  height={6}
-                  bgColor="grey.925"
-                  padding="0 8px 0 8px"
-                >
-                  <Icon
-                    color="grey.250"
-                    fontSize="16px"
-                    p="1.6px"
-                    as={
-                      isFromConnector
-                        ? ContractIcon
-                        : isDeploy
-                          ? DeployIcon
-                          : isDeposit
-                            ? DownLeftArrowGreen
-                            : UpRightArrowYellow
-                    }
-                  />
-                </Center>
+                <Icon color="gray.200" boxSize="24px" as={TransactionIcon} />
                 <Center
                   w="fit-content"
                   alignItems="flex-start"
@@ -116,11 +106,11 @@ const DetailsDialog = ({ ...props }: DetailsDialogProps) => {
                   gridRow={2}
                 >
                   <Heading
-                    variant={'title-sm'}
-                    color="grey.200"
+                    color="textPrimary"
+                    fontSize="md"
                     textAlign="left"
                     wordBreak="break-all"
-                    noOfLines={1}
+                    lineClamp={1}
                   >
                     {transaction.name}
                   </Heading>
@@ -129,21 +119,16 @@ const DetailsDialog = ({ ...props }: DetailsDialogProps) => {
 
               {!isLowerThanFourHundredAndThirty && isCompleted && (
                 <Button
-                  border="none"
-                  bgColor="#F5F5F50D"
-                  fontSize="xs"
-                  fontWeight="normal"
+                  fontWeight="medium"
                   letterSpacing=".5px"
                   ml="auto"
-                  variant="secondary"
-                  h="28px"
-                  p="6px 8px"
+                  variant="subtle"
+                  size="xs"
+                  px={3}
                   onClick={handleViewInExplorer}
-                  rightIcon={
-                    <Icon as={UpRightArrow} textColor="grey.75" fontSize="md" />
-                  }
                 >
-                  View on Explorer
+                  <UpRightArrow color="grey.75" boxSize={4} />
+                  Explorer
                 </Button>
               )}
             </HStack>
@@ -151,23 +136,20 @@ const DetailsDialog = ({ ...props }: DetailsDialogProps) => {
             <HStack w="full" justifyContent="space-between" h="38px">
               <HStack w="75%">
                 <Avatar
-                  name={transaction.predicate?.name ?? ''}
-                  color="grey.425"
-                  bgColor="grey.925"
-                  boxSize={6}
                   borderRadius="4px"
-                  sx={{
+                  css={{
                     '&>div': {
                       fontSize: '10px',
                     },
                   }}
+                  name={transaction.predicate?.name ?? ''}
                 />
 
                 <Heading
-                  variant={'title-sm'}
-                  color="grey.200"
+                  color="textPrimary"
+                  fontSize="md"
                   textAlign="left"
-                  noOfLines={1}
+                  lineClamp={1}
                   wordBreak="break-all"
                 >
                   {transaction.predicate?.name}
@@ -180,88 +162,100 @@ const DetailsDialog = ({ ...props }: DetailsDialogProps) => {
 
             <HStack w="full" justifyContent="space-between" h="38px">
               <TransactionCard.Amount
-                showAmount={!showAmountInformations}
+                showAmount={!showAmountInformations || isDeposit || isMint}
                 transaction={transaction}
                 w="fit-content"
                 h="26px"
               />
               <TransactionCard.Status
                 transaction={transaction}
-                status={transactionStatus({
-                  ...transaction,
-                  account,
-                })}
+                status={status}
               />
             </HStack>
-            {isLowerThanFourHundredAndThirty && isCompleted && (
-              <Button
-                mt={4}
-                w="full"
-                border="none"
-                bgColor="#F5F5F50D"
-                fontSize="xs"
-                fontWeight="normal"
-                letterSpacing=".5px"
-                variant="secondary"
-                h="28px"
-                p="6px 8px"
-                onClick={handleViewInExplorer}
-                rightIcon={
-                  <Icon as={UpRightArrow} textColor="grey.75" fontSize="md" />
-                }
+            {isLowerThanFourHundredAndThirty && (
+              <>
+                {isCompleted && (
+                  <Button
+                    variant="subtle"
+                    size="xs"
+                    mt={4}
+                    w="full"
+                    fontWeight="medium"
+                    letterSpacing=".5px"
+                    onClick={handleViewInExplorer}
+                  >
+                    <UpRightArrow color="gray.200" boxSize={4} />
+                    Explorer
+                  </Button>
+                )}
+              </>
+            )}
+            {!isDeposit && (
+              <a
+                href={`${env.BASE_API_URL}/transaction/${transaction.id}/advanced-details`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ width: '100%', textDecoration: 'none' }}
               >
-                View on Explorer
-              </Button>
+                <Button variant="subtle" w="100%" size="xs">
+                  <FileCodeIcon boxSize={4} />
+                  Advanced details
+                </Button>
+              </a>
             )}
           </VStack>
 
           <TransactionCard.Details
             transaction={transaction}
             isMobile
-            isMobileDetailsOpen={isOpen}
+            isMobileDetailsOpen={open}
           />
         </VStack>
       </Dialog.Body>
 
       <Dialog.Actions
-        mt="auto"
-        sx={{
-          '&>hr': {
-            marginTop: '0',
-          },
-        }}
+        position="fixed"
+        bottom={0}
+        left={0}
+        right={0}
+        p={3}
+        bg="bg.panel"
       >
         {showSignActions ? (
-          <>
+          <Stack direction="row" gap={3} w="full">
             <Button
-              variant="secondary"
+              flex={1}
+              colorPalette="red"
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
                 declineTransaction(transaction.hash);
               }}
-              isLoading={isLoading}
-              isDisabled={isSuccess && !awaitingAnswer}
+              loading={isLoading}
+              disabled={isSuccess && !awaitingAnswer}
             >
               Decline
             </Button>
             <Button
-              variant="primary"
-              w="full"
-              isLoading={isLoading}
-              isDisabled={isSuccess && !awaitingAnswer}
+              flex={1}
+              loading={isLoading}
+              disabled={isSuccess && !awaitingAnswer}
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                confirmTransaction(transaction.id);
+                confirmTransaction(transaction.id, undefined, transaction);
                 props.callBack && props.callBack();
               }}
             >
               Sign
             </Button>
-          </>
+          </Stack>
         ) : (
-          <Button variant="secondary" w="full" onClick={onClose}>
+          <Button
+            variant="subtle"
+            w="full"
+            onClick={() => onOpenChange?.({ open: false })}
+          >
             Back
           </Button>
         )}

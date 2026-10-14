@@ -1,8 +1,11 @@
+/* eslint-disable @typescript-eslint/no-non-null-asserted-optional-chain */
 import { useFuel } from '@fuels/react';
+import { TypeUser } from 'bakosafe';
 import { Provider } from 'fuels';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { BAKO_SUPPORT_SEARCH } from '@/components/floatingCard';
 import { queryClient } from '@/config';
 import {
   EConnectors,
@@ -15,12 +18,7 @@ import {
   useQueryParams,
   useSignOut,
 } from '..';
-import {
-  AuthenticateParams,
-  IUseAuthReturn,
-  TypeUser,
-  UserType,
-} from '../services';
+import { AuthenticateParams, IUseAuthReturn, UserType } from '../services';
 import { useUserInfoRequest } from './useUserInfoRequest';
 
 export type SingleAuthentication = {
@@ -31,31 +29,37 @@ export type WorkspaceAuthentication = {
   workspace: string;
 };
 
-//coment
-//coment
 const useAuth = (): IUseAuthReturn => {
-  const { infos, isLoading, isFetching, refetch } = useUserInfoRequest();
   const [invalidAccount, setInvalidAccount] = useState(false);
+
+  const { infos, isLoading, isFetching, refetch } = useUserInfoRequest();
   const { fuel } = useFuel();
   const { setAuthCookies, clearAuthCookies, userAuthCookiesInfo } =
     useAuthCookies();
   const signOutRequest = useSignOut();
   const { account, singleWorkspace, accessToken } = userAuthCookiesInfo();
-  const { sessionId, origin, name, request_id, byConnector } = useQueryParams();
+  const { sessionId, origin, name, request_id, byConnector, connectorType } =
+    useQueryParams();
   const navigate = useNavigate();
 
   const authenticate = (params: AuthenticateParams) => {
+    localStorage.setItem(BAKO_SUPPORT_SEARCH, 'true');
+    window.dispatchEvent(new Event('bako-storage-change'));
     setAuthCookies(params);
   };
 
   const logout = async (removeTokenFromDb = true, callback?: () => void) => {
+    localStorage.setItem(BAKO_SUPPORT_SEARCH, 'false');
+    window.dispatchEvent(new Event('bako-storage-change'));
+
     if (accessToken && removeTokenFromDb) {
       await signOutRequest.mutateAsync();
       callback?.();
     }
 
-    setTimeout(() => {
+    setTimeout(async () => {
       clearAuthCookies();
+      await queryClient.cancelQueries();
       queryClient.clear();
 
       const queryParams = generateRedirectQueryParams({
@@ -64,22 +68,26 @@ const useAuth = (): IUseAuthReturn => {
         name,
         request_id,
         byConnector: byConnector ? String(byConnector) : undefined,
+        connectorType: connectorType ? connectorType : undefined,
       });
       navigate(`/${queryParams}`);
     }, 200);
   };
 
   const logoutWhenExpired = async () => {
+    localStorage.setItem(BAKO_SUPPORT_SEARCH, 'false');
+    window.dispatchEvent(new Event('bako-storage-change'));
     clearAuthCookies();
+    await queryClient.cancelQueries();
     queryClient.clear();
     navigate('/?expired=true');
   };
 
   const userProvider = async () => {
-    const _userProvider = infos?.type?.type != TypeUser.WEB_AUTHN;
+    const _userProvider = infos?.type?.type === TypeUser.FUEL;
 
     return {
-      provider: await Provider.create(
+      provider: new Provider(
         _userProvider
           ? (await fuel.currentNetwork()).url
           : 'http://localhost:4000/v1/graphql',
@@ -88,8 +96,19 @@ const useAuth = (): IUseAuthReturn => {
   };
 
   const userType = (): UserType => {
-    if (infos?.webauthn)
+    if (infos?.webauthn) {
       return { type: TypeUser.WEB_AUTHN, name: EConnectors.WEB_AUTHN };
+    }
+
+    const isEvm = (infos?.type as unknown as TypeUser) == TypeUser.EVM;
+    if (isEvm) {
+      return { type: TypeUser.EVM, name: EConnectors.EVM };
+    }
+
+    const isSocial = (infos?.type as unknown as TypeUser) == TypeUser.SOCIAL;
+    if (isSocial) {
+      return { type: TypeUser.SOCIAL, name: EConnectors.EVM };
+    }
 
     const currentConnector = fuel.currentConnector()?.name as EConnectors;
 
@@ -113,6 +132,7 @@ const useAuth = (): IUseAuthReturn => {
       id: infos?.id!,
       name: infos?.name!,
       onSingleWorkspace: infos?.onSingleWorkspace ?? false,
+      settings: infos?.settings!,
       type: userType(),
       webauthn: infos?.webauthn!,
       workspace: infos?.workspace!,

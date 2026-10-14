@@ -1,48 +1,37 @@
-import { HStack, Icon, Text, VStack } from '@chakra-ui/react';
+import { HStack, Icon, Text } from 'bako-ui';
 
-import { PlusIcon } from '@/components';
-import { CreateContactDialog } from '@/modules/addressBook/components/dialog';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import { BookmarkIcon } from '@/components';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
 interface AddToAddressBookProps {
   address: string;
+  onClick?: () => void;
 }
 
-const AddToAddressBook = ({ address }: AddToAddressBookProps) => {
+const AddToAddressBook = ({ address, onClick }: AddToAddressBookProps) => {
   const {
     addressBookInfos: {
-      dialog: { contactDialog },
       handlers: { handleOpenDialog },
-      requests: { createContactRequest },
-      form: contactForm,
     },
   } = useWorkspaceContext();
 
   return (
     <>
-      <CreateContactDialog
-        form={contactForm}
-        dialog={contactDialog}
-        isLoading={createContactRequest.isPending}
-        isEdit={false}
-      />
-
       <HStack
-        spacing={4}
-        px={4}
-        py={3}
+        gap={3}
+        p={3}
         cursor="pointer"
         onClick={() => {
+          onClick?.();
           handleOpenDialog?.({
             address,
           });
         }}
       >
-        <Icon as={PlusIcon} color="grey.50" fontSize="xs" />
-        <VStack alignItems="flex-start" spacing={0} fontSize="xs">
-          <Text color="grey.50">Add to Address Book</Text>
-          <Text color="grey.425">Save this address to your address book</Text>
-        </VStack>
+        <Icon as={BookmarkIcon} color="gray.200" boxSize={3} />
+        <Text color="gray.200" fontSize="xs">
+          Save address
+        </Text>
       </HStack>
     </>
   );

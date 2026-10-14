@@ -4,29 +4,51 @@ import { useMemo } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import * as yup from 'yup';
 
-import { AddressUtils, AssetMap, NativeAssetId } from '@/modules/core/utils';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import {
+  AddressUtils,
+  AddressValidator,
+  AssetMap,
+  NativeAssetId,
+} from '@/modules/core/utils';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
 export interface ITransactionField {
   asset: string;
   value: string;
   amount: string;
   fee?: string;
+  resolvedLabel?: string;
+  usdEstimate?: number;
+}
+
+export interface ITransactionForm {
+  name: string | undefined;
+  handle: string | undefined;
+  resolver: string | undefined;
+  transactions: ITransactionField[] | undefined;
 }
 
 export type UseCreateTransactionFormParams = {
   assets?: { assetId: string; amount: string }[];
-  nfts?: { assetId: string; amount: string }[];
+  nfts?: { assetId: string }[];
   assetsMap: AssetMap;
   validateBalance: (asset: string, amount: string) => boolean;
   getCoinAmount: (asset: string) => BN;
 };
 
 const useCreateTransactionForm = (params: UseCreateTransactionFormParams) => {
-  const { providerInstance, fuelsTokens } = useWorkspaceContext();
+  const { providerInstance, fuelsTokens, assetsMap } = useWorkspaceContext();
+
+  const addressValidator = useMemo(
+    () => new AddressValidator(providerInstance),
+    [providerInstance],
+  );
+
   const assetIdsAndAddresses = fuelsTokens?.flatMap((item) =>
     item.networks
-      ?.map((network) => network['assetId'] ?? network['address'])
+      ?.map((network) =>
+        network.type === 'fuel' ? network.assetId : network.address,
+      )
       .filter(Boolean),
   );
 
@@ -63,7 +85,8 @@ const useCreateTransactionForm = (params: UseCreateTransactionFormParams) => {
                 .find((n) => (n as NetworkFuel)?.assetId === parent.asset) ||
               null;
 
-            const maxDecimals = selectedToken?.decimals;
+            const maxDecimals =
+              selectedToken?.decimals ?? assetsMap?.[parent.asset]?.units;
 
             return !(maxDecimals && decimalsCounter > maxDecimals);
           },
@@ -160,9 +183,10 @@ const useCreateTransactionForm = (params: UseCreateTransactionFormParams) => {
       value: yup
         .string()
         .required('Address is required.')
-        .test('valid-address', 'Invalid address.', (address) =>
-          AddressUtils.isValid(address),
-        )
+        .test('valid-address', 'Invalid address.', (address) => {
+          const allowEvm = true;
+          return AddressUtils.isValid(address, !allowEvm);
+        })
         .test(
           'valid-account',
           'This address can not receive assets from Bako.',
@@ -175,14 +199,20 @@ const useCreateTransactionForm = (params: UseCreateTransactionFormParams) => {
               const isValid =
                 AddressUtils.isValid(address) && !isAssetIdOrAssetAddress;
               if (!isValid) return false;
-
-              const provider = await providerInstance;
-              return await provider.isUserAccount(address);
+              if (
+                AddressUtils.isPasskey(address) ||
+                AddressUtils.isSocial(address)
+              ) {
+                return false;
+              }
+              return addressValidator.isValid(address);
             } catch {
               return false;
             }
           },
         ),
+      resolvedLabel: yup.string().optional(),
+      usdEstimate: yup.number().optional(),
     });
 
     const schema = yup.object({
@@ -207,6 +237,8 @@ const useCreateTransactionForm = (params: UseCreateTransactionFormParams) => {
           value: '',
           amount: '',
           fee: '',
+          resolvedLabel: '',
+          usdEstimate: 0,
         },
       ],
     },

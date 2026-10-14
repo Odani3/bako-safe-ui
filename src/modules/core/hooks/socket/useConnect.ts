@@ -1,8 +1,7 @@
 import { TransactionRequestLike } from 'fuels';
-import { useCallback, useContext, useRef } from 'react';
+import { useContext } from 'react';
 
 import { SocketContext } from '@/config/socket';
-import { useQueryParams } from '@/modules/auth';
 
 export enum SocketEvents {
   CONNECT = 'connection',
@@ -15,13 +14,27 @@ export enum SocketEvents {
   TX_CREATE = '[TX_EVENT_CREATED]',
   TX_SIGN = '[TX_EVENT_SIGNED]',
   TX_REQUEST = '[TX_EVENT_REQUESTED]',
-  SIGN_CONFIRMED = '[SIGN_CONFIRMED]',
+  TX_DELETE = '[TX_EVENT_DELETED]',
+
+  TRANSACTION = '[TRANSACTION]',
+  TRANSACTION_CREATED = '[CREATED]',
+  TRANSACTION_SIGNED = '[SIGNED]',
+  TRANSACTION_CANCELLED = '[CANCELLED]',
+  NEW_TRANSACTION = '[NEW_TRANSACTION]',
+
+  BALANCE_OUTDATED_USER = '[BALANCE_OUTDATED_USER]',
+  BALANCE_OUTDATED_PREDICATE = '[BALANCE_OUTDATED_PREDICATE]',
+
+  CHANGE_NETWORK = '[CHANGE_NETWORK]',
+  NETWORK_CHANGED = '[NETWORK_CHANGED]',
+
+  SWITCH_NETWORK = '[SWITCH_NETWORK]',
 }
 
 export enum SocketRealTimeNotifications {
   VAULT = '[VAULT]',
-  TRANSACTION = '[TRANSACTION]',
   NEW_NOTIFICATION = '[NEW_NOTIFICATION]',
+  TRANSACTION = '[TRANSACTION]',
 }
 
 export enum SocketUsernames {
@@ -30,19 +43,36 @@ export enum SocketUsernames {
   API = '[API]',
 }
 
+/**
+ * Enum with names of connectors used by the Fuel Connector that are linked to Bako Safe.
+ * Used to identify the connector type in the DApp sign-in flow.
+ */
+export enum EFuelConnectorsTypes {
+  BAKO = 'Bako Safe',
+  EVM = 'Ethereum Wallets',
+  SOCIAL = 'Social Login',
+}
+
 export interface IEventTX_CREATE {
   tx?: TransactionRequestLike;
   operations: any;
   sign?: boolean;
+  connectorType?: EFuelConnectorsTypes;
 }
 
-export interface IDefaultMessage {
+export interface IEventTX_SIGN {
+  hash: string;
+  signedMessage: string;
+  connectorType?: EFuelConnectorsTypes;
+}
+
+export interface IDefaultMessage<D extends any> {
   username: string;
   room: string;
   to: SocketUsernames;
   type: SocketEvents;
   request_id: string;
-  data: any;
+  data: D;
 }
 
 export interface ISocketConnectParams {
@@ -79,7 +109,7 @@ export interface ISocketEmitMessageParams {
 }
 
 export const useSocket = () => {
-  const socket = useContext(SocketContext);
+  const { socket, isConnected } = useContext(SocketContext);
   // const { request_id, origin } = useQueryParams();
 
   // const socketState = useRef(socket.connected);
@@ -128,5 +158,5 @@ export const useSocket = () => {
     );
   };
 
-  return { emitMessage, socket };
+  return { emitMessage, socket, isConnected };
 };

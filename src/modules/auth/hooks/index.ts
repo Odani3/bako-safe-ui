@@ -2,6 +2,7 @@ export * from './signIn';
 export * from './useAuth';
 export * from './useAuthCookies';
 export * from './useAuthUrlParams';
+export * from './useEvm';
 export * from './usePopup';
 export * from './useRedirectAuthUser';
 export * from './useRedirectFromLandingPage';

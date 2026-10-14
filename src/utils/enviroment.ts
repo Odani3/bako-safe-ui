@@ -35,11 +35,33 @@ export const getBakoIDURL = (): string => {
 
   switch (environment) {
     case 'staging':
-      baseUrl =
-        'https://bako-id-ui-git-gr-featoffchain-sync-infinity-base.vercel.app/';
+      baseUrl = 'https://preview.bako.id/';
       break;
     case 'production':
       baseUrl = 'https://app.bako.id/';
+      break;
+    default:
+      baseUrl = 'http://127.0.0.1:5174';
+  }
+
+  return baseUrl;
+};
+
+export const GARAGE_APP_URL = 'https://garage.zone';
+
+export const getGarageURL = (): string => {
+  const environment = getEnvironment();
+  let baseUrl = '';
+
+  switch (environment) {
+    case 'preview':
+      baseUrl = 'https://preview.garage.zone/';
+      break;
+    case 'staging':
+      baseUrl = 'https://preview.garage.zone/';
+      break;
+    case 'production':
+      baseUrl = GARAGE_APP_URL;
       break;
     default:
       baseUrl = 'http://127.0.0.1:5174';

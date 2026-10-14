@@ -1,17 +1,14 @@
 import {
   Box,
   Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
   Button,
-  Divider,
   HStack,
   Icon,
+  Loader,
   Stack,
   Text,
-  useDisclosure,
   VStack,
-} from '@chakra-ui/react';
+} from 'bako-ui';
 import { useEffect } from 'react';
 import { FaRegPlusSquare } from 'react-icons/fa';
 import { IoChevronBack } from 'react-icons/io5';
@@ -20,28 +17,27 @@ import { CustomSkeleton, HomeIcon, VaultIcon } from '@/components';
 import { EmptyState } from '@/components/emptyState';
 import { AddressBookIcon } from '@/components/icons/address-book';
 import { TransactionsIcon } from '@/components/icons/transactions';
-import { Pages, PermissionRoles } from '@/modules/core';
+import { Pages, PermissionRoles, WorkspacesQueryKey } from '@/modules/core';
+import { useDisclosure } from '@/modules/core/hooks/useDisclosure';
 import { ActionCard } from '@/modules/home/components/ActionCard';
 import { CreateVaultDialog } from '@/modules/vault';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
 import {
   TransactionCard,
-  TransactionCardMobile,
   TransactionFilter,
   WaitingSignatureBadge,
 } from '../../components';
 import { StatusFilter } from '../../hooks';
+import { useTransactionSocketListener } from '../../hooks/events/useTransactionsSocketListener';
 import { useTransactionsContext } from '../../providers/TransactionsProvider';
-import { transactionStatus } from '../../utils';
 
 const UserTransactionsPage = () => {
   const {
     transactionsPageList: {
       transactionsRef,
-      request: { isLoading, isFetching },
+      request: { isLoading, isFetching, hasNextPage },
       filter,
-      inView,
       handlers: { navigate },
       lists: { transactions },
     },
@@ -58,7 +54,7 @@ const UserTransactionsPage = () => {
   } = useWorkspaceContext();
 
   const { OWNER, MANAGER, ADMIN } = PermissionRoles;
-  const { isOpen, onClose, onOpen } = useDisclosure();
+  const { isOpen, onOpenChange, onOpen } = useDisclosure();
 
   const emptyTransactions = !isLoading && !transactions.length && !isFetching;
 
@@ -66,26 +62,29 @@ const UserTransactionsPage = () => {
     return () => resetAllTransactionsTypeFilters();
   }, []);
 
+  const transactionQueryKey =
+    WorkspacesQueryKey.TRANSACTION_LIST_PAGINATION_QUERY_KEY(
+      userInfos.workspace?.id ?? undefined,
+      filter.value as StatusFilter,
+    );
+
+  useTransactionSocketListener(transactionQueryKey ?? []);
+
   return (
     <VStack
       w="full"
-      spacing={6}
+      gap={6}
       p={{ base: 1, sm: 1 }}
       px={{ base: 'auto', sm: 8 }}
     >
-      <CreateVaultDialog isOpen={isOpen} onClose={onClose} />
+      <CreateVaultDialog open={isOpen} onOpenChange={onOpenChange} />
 
       <HStack w="full" h="10" justifyContent="space-between">
         <HStack>
           <Button
-            variant="primary"
+            colorPalette="primary"
             fontWeight="semibold"
             fontSize={15}
-            leftIcon={
-              <Box mr={-1}>
-                <IoChevronBack size={22} />
-              </Box>
-            }
             px={3}
             bg="dark.100"
             color="grey.200"
@@ -98,27 +97,30 @@ const UserTransactionsPage = () => {
                   )
             }
           >
+            <IoChevronBack size={22} />
             Back home
           </Button>
 
           {!isMobile && (
             <>
-              <Breadcrumb ml={8}>
-                <BreadcrumbItem>
-                  <BreadcrumbLink
-                    fontSize="sm"
-                    color="grey.200"
-                    fontWeight="semibold"
-                    onClick={() => goHome()}
-                  >
-                    <Icon mr={2} as={HomeIcon} fontSize="sm" color="grey.200" />
-                    Home
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
+              <Breadcrumb.Root ml={8}>
+                <Breadcrumb.List>
+                  <Breadcrumb.Item>
+                    <Breadcrumb.Link
+                      fontSize="sm"
+                      color="grey.200"
+                      fontWeight="semibold"
+                      onClick={() => goHome()}
+                    >
+                      <Icon mr={2} as={HomeIcon} w={3} color="grey.200" />
+                      Home
+                    </Breadcrumb.Link>
+                  </Breadcrumb.Item>
+                  <Breadcrumb.Separator />
 
-                {/* Commented out code to temporarily disable workspaces. */}
+                  {/* Commented out code to temporarily disable workspaces. */}
 
-                {/* {!userInfos.onSingleWorkspace && (
+                  {/* {!userInfos.onSingleWorkspace && (
                   <BreadcrumbItem>
                     <BreadcrumbLink
                       fontSize="sm"
@@ -139,35 +141,36 @@ const UserTransactionsPage = () => {
                     </BreadcrumbLink>
                   </BreadcrumbItem>
                 )} */}
-                <BreadcrumbItem>
-                  <BreadcrumbLink
-                    fontSize="sm"
-                    color="grey.200"
-                    fontWeight="semibold"
-                    href="#"
-                  >
-                    My Transactions
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-              </Breadcrumb>
+                  <Breadcrumb.Item>
+                    <Breadcrumb.Link
+                      fontSize="sm"
+                      color="grey.200"
+                      fontWeight="semibold"
+                      href="#"
+                    >
+                      My Transactions
+                    </Breadcrumb.Link>
+                  </Breadcrumb.Item>
+                </Breadcrumb.List>
+              </Breadcrumb.Root>
             </>
           )}
         </HStack>
         <Box>
           <Button
-            isDisabled={!hasPermission([OWNER, MANAGER, ADMIN])}
-            variant="primary"
+            disabled={!hasPermission([OWNER, MANAGER, ADMIN])}
+            colorPalette="primary"
             fontWeight="bold"
-            leftIcon={<FaRegPlusSquare />}
             onClick={onOpen}
           >
+            <FaRegPlusSquare />
             Create vault
           </Button>
         </Box>
       </HStack>
 
       {/* ACTION BUTTONS */}
-      <Stack w="full" direction={{ base: 'column', md: 'row' }} spacing={6}>
+      <Stack w="full" direction={{ base: 'column', md: 'row' }} gap={6}>
         <ActionCard.Container
           onClick={() =>
             navigate(
@@ -177,7 +180,9 @@ const UserTransactionsPage = () => {
             )
           }
         >
-          <ActionCard.Icon icon={VaultIcon} />
+          <ActionCard.Icon>
+            <VaultIcon w={6} />
+          </ActionCard.Icon>
           <Box>
             <ActionCard.Title>Vaults</ActionCard.Title>
             <ActionCard.Description>
@@ -187,7 +192,9 @@ const UserTransactionsPage = () => {
         </ActionCard.Container>
 
         <ActionCard.Container cursor="auto">
-          <ActionCard.Icon icon={TransactionsIcon} />
+          <ActionCard.Icon>
+            <TransactionsIcon w={6} />
+          </ActionCard.Icon>
           <Box>
             <ActionCard.Title>Transactions</ActionCard.Title>
             <ActionCard.Description>
@@ -205,7 +212,9 @@ const UserTransactionsPage = () => {
             )
           }
         >
-          <ActionCard.Icon icon={AddressBookIcon} />
+          <ActionCard.Icon>
+            <AddressBookIcon w={6} />
+          </ActionCard.Icon>
           <Box>
             <ActionCard.Title>Address book</ActionCard.Title>
             <ActionCard.Description>
@@ -231,7 +240,7 @@ const UserTransactionsPage = () => {
             flexDir={isExtraSmall ? 'column' : 'row'}
             gap={isExtraSmall ? 2 : 4}
           >
-            <Text variant="subtitle" fontWeight="semibold" color="grey.75">
+            <Text fontWeight="semibold" color="grey.75">
               Transactions
             </Text>
             <WaitingSignatureBadge
@@ -270,14 +279,7 @@ const UserTransactionsPage = () => {
         }
       </VStack>
 
-      <CustomSkeleton
-        h="full"
-        isLoaded={
-          !filter.value
-            ? true
-            : !isFetching && !pendingSignerTransactions.isFetching
-        }
-      >
+      <CustomSkeleton h="full" loading={isLoading}>
         {emptyTransactions && (
           <EmptyState
             h="full"
@@ -288,92 +290,30 @@ const UserTransactionsPage = () => {
         )}
         {/* LIST */}
         {!emptyTransactions && (
-          <VStack
-            minH="55vh"
-            maxH="74vh"
-            mt={-3}
-            overflowY="scroll"
-            overflowX="hidden"
-            scrollBehavior="smooth"
-            w="full"
-            sx={{
-              '&::-webkit-scrollbar': {
-                display: 'none',
-                width: '5px',
-                maxHeight: '330px',
-                backgroundColor: 'grey.200',
-                borderRadius: '30px',
-              },
-              '&::-webkit-scrollbar-thumb': {
-                backgroundColor: '#2C2C2C',
-                borderRadius: '30px',
-                height: '10px',
-              },
-            }}
-          >
+          <VStack h="35vh" mt={-3} w="full">
             {transactions?.map((grouped) => (
-              <>
-                <HStack w="full">
-                  <Text
-                    fontSize="sm"
-                    fontWeight="semibold"
-                    color="grey.425"
-                    whiteSpace="nowrap"
-                  >
-                    {grouped.monthYear}
-                  </Text>
+              <Box key={grouped.day} w="full">
+                <TransactionCard.GroupDay day={grouped.day} mb={2} />
 
-                  <Divider w="full" borderColor="grey.950" />
-                </HStack>
-                <TransactionCard.List mt={1} w="full" spacing={0}>
-                  {grouped?.transactions.map((transaction) => {
-                    const status = transactionStatus({
-                      ...transaction,
-                      account: userInfos.address,
-                    });
-                    const isSigner = !!transaction.predicate?.members?.find(
-                      (member) => member.address === userInfos.address,
-                    );
-
-                    return (
-                      <>
-                        <Box
-                          key={transaction.id}
-                          ref={transactionsRef}
-                          w="full"
-                        >
-                          {isMobile ? (
-                            <TransactionCardMobile
-                              isSigner={isSigner}
-                              transaction={transaction}
-                              account={userInfos.address}
-                              mt="15px"
-                            />
-                          ) : (
-                            <TransactionCard.Container
-                              mb="11px"
-                              key={transaction.id}
-                              status={status}
-                              isSigner={isSigner}
-                              transaction={transaction}
-                              account={userInfos.address}
-                              details={
-                                <TransactionCard.Details
-                                  transaction={transaction}
-                                  status={status}
-                                />
-                              }
-                            />
-                          )}
-                        </Box>
-
-                        <Box ref={inView.ref} />
-                      </>
-                    );
-                  })}
+                <TransactionCard.List mt={1} w="full" gap={0}>
+                  {grouped?.transactions.map((transaction) => (
+                    <TransactionCard.Item
+                      key={transaction.id}
+                      ref={transactionsRef}
+                      w="full"
+                      isMobile={isMobile}
+                      transaction={transaction}
+                      userInfos={userInfos}
+                    />
+                  ))}
                 </TransactionCard.List>
-              </>
+              </Box>
             ))}
+            {hasNextPage && (
+              <Box w="full" display={'flex'} justifyContent={'center'} pb={5}>
+                <Loader alignSelf="center" mt={2} color="brand.500" />
+              </Box>
+            )}
           </VStack>
         )}
       </CustomSkeleton>

@@ -1,9 +1,23 @@
-import { Asset, FAKE_WITNESSES, ITransactionResume } from 'bakosafe';
-import { bn, calculateGasFee, ScriptTransactionRequest } from 'fuels';
+import { Asset, ITransactionResume, Vault } from 'bakosafe';
+import {
+  Address,
+  BN,
+  bn,
+  calculateGasFee,
+  Provider,
+  ScriptTransactionRequest,
+} from 'fuels';
+import memoize from 'lodash.memoize';
 
 import { api } from '@/config/api';
+import { ITransaction } from '@/modules/core/hooks/bakosafe/utils/types';
 
 import {
+  createTxCostHash,
+  FAKE_SIGNATURES,
+} from '../states/transactionCostCache';
+import {
+  CancelTransactionResponse,
   CloseTransactionPayload,
   CreateTransactionPayload,
   CreateTransactionResponse,
@@ -18,11 +32,32 @@ import {
   GetUserTransactionsResponse,
   GetVaultTransactionsParams,
   GetVaultTransactionsResponse,
+  ITransactionHistory,
+  ITransactionInfinityQueryData,
+  ITransactionQueryUpdatePage,
+  ITransactionReactQueryUpdate,
   ITransactionStatusFilter,
   ResolveTransactionCostInput,
   SignerTransactionPayload,
   SignerTransactionResponse,
 } from './types';
+
+const getBaseAssetIdInternal = async (provider: Provider) => {
+  return await provider.getBaseAssetId();
+};
+
+const getPredicateGasInternal = async (vault: Vault) => {
+  return await vault.maxGasUsed();
+};
+
+const getBaseAssetId = memoize(
+  getBaseAssetIdInternal,
+  (provider: Provider) => provider.url,
+);
+
+const getPredicateGas = memoize(getPredicateGasInternal, (vault: Vault) =>
+  vault.address.toString(),
+);
 
 export class TransactionService {
   static async create(payload: CreateTransactionPayload) {
@@ -59,6 +94,13 @@ export class TransactionService {
         signature: body.signer,
         approve: !!body.confirm,
       },
+    );
+    return data;
+  }
+
+  static async cancel(hash: string) {
+    const { data } = await api.put<CancelTransactionResponse>(
+      `/transaction/cancel/${hash}`,
     );
     return data;
   }
@@ -133,88 +175,130 @@ export class TransactionService {
     return data;
   }
 
-  static async resolveTransactionCosts(input: ResolveTransactionCostInput) {
-    const { vault, assets } = input;
+  static resolveTransactionCosts = memoize(
+    async (input: ResolveTransactionCostInput) => {
+      const { vault, assets: assetsToSpend, assetsMap } = input;
+      const predicateGasUsed = await getPredicateGas(vault);
 
-    const predicateGasUsed = await vault.maxGasUsed();
+      let transactionRequest = new ScriptTransactionRequest();
+      const assets = [...(assetsToSpend || [])];
 
-    let transactionRequest = new ScriptTransactionRequest();
+      const baseAssetId = await getBaseAssetId(vault.provider);
+      const hasETHAsset = assets.find((a) => a.assetId === baseAssetId);
 
-    if (assets.length) {
-      const outputs = Asset.assetsGroupByTo(assets);
-      const coins = Asset.assetsGroupById(assets);
-      const baseAssetId = vault.provider.getBaseAssetId();
-      const containETH = !!coins[baseAssetId];
+      if (!assets.length || !hasETHAsset) {
+        const { coins } = await vault.getCoins(baseAssetId);
 
-      if (containETH) {
-        const value = bn(0).add(coins[baseAssetId]);
-        coins[baseAssetId] = value;
-      } else {
-        coins[baseAssetId] = bn(0);
+        const resources = vault.generateFakeResources(
+          coins.map((c) => ({
+            assetId: c.assetId,
+            amount: c.amount,
+          })),
+        );
+
+        assets.push({
+          amount: bn(1).formatUnits(),
+          assetId: baseAssetId,
+          to: Address.fromRandom().toString(),
+        });
+
+        transactionRequest.addResources(resources);
       }
-      const transactionCoins = Object.entries(coins).map(([key, value]) => {
-        return {
-          amount: value,
-          assetId: key,
-        };
+
+      const outputs = Asset.assetsGroupByTo(assets);
+
+      const assetUnitsMap = new Map<string, number>();
+      const assetAmountMap = new Map<string, string>();
+
+      assets.forEach((asset) => {
+        const units = assetsMap?.[asset.assetId]?.units;
+        if (typeof units === 'number') assetUnitsMap.set(asset.assetId, units);
+        if (asset.amount) {
+          const currentAmount = assetAmountMap.get(asset.assetId) || '0';
+          const newAmount = bn
+            .parseUnits(currentAmount, units)
+            .add(bn.parseUnits(asset.amount, units));
+          assetAmountMap.set(asset.assetId, newAmount.formatUnits(units));
+        }
       });
+
+      const transactionCoins = assets.reduce(
+        (acc, asset) => {
+          const alreadyExist = acc.find((a) => a.assetId === asset.assetId);
+          if (alreadyExist) {
+            // prevent duplicated assetIds
+            return acc;
+          }
+          const units = assetUnitsMap.get(asset.assetId);
+          const amount = assetAmountMap.get(asset.assetId);
+          if (!units || !amount) return acc;
+          const assetUnits = units;
+          const amountBN = bn.parseUnits(amount || '0', assetUnits);
+
+          return [...acc, { assetId: asset.assetId, amount: amountBN }];
+        },
+        [] as { assetId: string; amount: BN }[],
+      );
+
       const _coins = await vault.getResourcesToSpend(transactionCoins);
 
-      // Add outputs
-      Object.entries(outputs).map(([, value]) => {
-        transactionRequest.addCoinOutput(
-          vault.address,
-          value.amount,
-          value.assetId,
-        );
+      const fakeCoins = vault.generateFakeResources(
+        _coins.map((c) => ({
+          assetId: c.assetId,
+          amount: c.amount,
+        })),
+      );
+
+      Object.entries(outputs).forEach(([, value]) => {
+        const assetId = value.assetId;
+        const assetUnits = assetUnitsMap.get(assetId);
+        const assetAmount = assetAmountMap.get(assetId);
+
+        if (assetUnits !== 9 && assetAmount) {
+          value.amount = bn.parseUnits(assetAmount, assetUnits);
+        }
+
+        transactionRequest.addCoinOutput(vault.address, value.amount, assetId);
       });
 
-      // Add resources
-      transactionRequest.addResources(_coins);
-    } else {
-      const resources = vault.generateFakeResources([
-        { amount: bn(0), assetId: vault.provider.getBaseAssetId() },
-      ]);
-      transactionRequest.addResources(resources);
-    }
+      transactionRequest.addResources(fakeCoins);
 
-    // Add witnesses
-    const fakeSignatures = Array.from({ length: 10 }, () => FAKE_WITNESSES);
-    fakeSignatures.forEach((signature) =>
-      transactionRequest.addWitness(signature),
-    );
+      FAKE_SIGNATURES.forEach((sig) => transactionRequest.addWitness(sig));
 
-    const transactionCost = await vault.getTransactionCost(transactionRequest);
-    transactionRequest = await vault.fund(transactionRequest, transactionCost);
+      // TODO: estimateAndFund is deprecated -> use assembleTx
+      transactionRequest = await transactionRequest.estimateAndFund(vault);
 
-    // Calculate the total gas usage for the transaction
-    let totalGasUsed = bn(0);
-    transactionRequest.inputs.forEach((input) => {
-      if ('predicate' in input && input.predicate) {
-        input.witnessIndex = 0;
-        input.predicateGasUsed = undefined;
-        totalGasUsed = totalGasUsed.add(predicateGasUsed);
-      }
-    });
+      const totalGasUsed = transactionRequest.inputs.reduce((acc, input) => {
+        if ('predicate' in input && input.predicate) {
+          input.witnessIndex = 0;
+          (input as any).predicateGasUsed = undefined;
+          return acc.add(predicateGasUsed);
+        }
+        return acc;
+      }, bn(0));
 
-    // Estimate the max fee for the transaction and calculate fee difference
-    const { gasPriceFactor } = vault.provider.getGasConfig();
-    const { maxFee, gasPrice } = await vault.provider.estimateTxGasAndFee({
-      transactionRequest,
-    });
+      const { gasPriceFactor } = await vault.provider.getGasConfig();
+      const { maxFee, gasPrice } = await vault.provider.estimateTxGasAndFee({
+        transactionRequest,
+      });
 
-    const predicateSuccessFeeDiff = calculateGasFee({
-      gas: totalGasUsed,
-      priceFactor: gasPriceFactor,
-      gasPrice,
-    });
+      const predicateSuccessFeeDiff = calculateGasFee({
+        gas: totalGasUsed,
+        priceFactor: gasPriceFactor,
+        gasPrice,
+      });
 
-    const maxFeeWithDiff = maxFee.add(predicateSuccessFeeDiff).mul(1.2);
+      const maxFeeWithDiff = maxFee
+        .add(predicateSuccessFeeDiff)
+        .mul(100)
+        .div(10);
 
-    return {
-      fee: maxFeeWithDiff,
-    };
-  }
+      return {
+        fee: maxFeeWithDiff,
+      };
+    },
+    (input: ResolveTransactionCostInput) => createTxCostHash(input),
+  );
 
   static async getTransactionsHistory(id: string, predicateId: string) {
     const { data } = await api.get<GetTransactionHistoryResponse>(
@@ -228,5 +312,69 @@ export class TransactionService {
       `/transaction/verify/${id}`,
     );
     return data;
+  }
+
+  static updateTransactionHistoryReactQuery(
+    oldData: ITransactionHistory,
+    event: ITransactionReactQueryUpdate,
+  ) {
+    if (!oldData) return oldData;
+    return event.history;
+  }
+
+  static updateTransactionReactQuery(
+    oldData: ITransactionQueryUpdatePage,
+    event: ITransactionReactQueryUpdate,
+  ): ITransactionQueryUpdatePage {
+    if (!oldData) return oldData;
+
+    const { type, transaction } = event;
+
+    if (type !== '[CREATED]') {
+      return {
+        ...oldData,
+        data: oldData.data.map((tx: ITransaction) =>
+          tx.id === transaction.id ? transaction : tx,
+        ),
+      };
+    }
+
+    return {
+      ...oldData,
+      data: [transaction, ...oldData.data],
+    };
+  }
+
+  static updateInfiniteTransactionReactQuery(
+    oldData: ITransactionInfinityQueryData,
+    event: ITransactionReactQueryUpdate,
+  ): ITransactionInfinityQueryData {
+    if (!oldData) return oldData;
+
+    const { type, transaction } = event;
+    const { pageParams, pages } = oldData;
+
+    if (type !== '[CREATED]') {
+      return {
+        pageParams,
+        pages: pages.map((page: ITransactionQueryUpdatePage) =>
+          page.data.some((item: ITransaction) => item.id === transaction.id)
+            ? {
+                ...page,
+                data: page.data.map((item: ITransaction) =>
+                  item.id === transaction.id ? transaction : item,
+                ),
+              }
+            : page,
+        ),
+      };
+    }
+
+    return {
+      pageParams,
+      pages: pages.map((page: any, index: number) =>
+        index === 0 ? { ...page, data: [transaction, ...page.data] } : page,
+      ),
+    };
   }
 }

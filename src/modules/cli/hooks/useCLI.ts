@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react';
 
 import {
   BitCoinIcon,
-  CoinsIcon,
+  KeyIcon,
   MoreLessIcon,
   RecoveryIcon,
+  UploadFile,
 } from '@/components';
 import { PredicateAndWorkspace, Workspace } from '@/modules';
-import { defaultPermissions, PermissionRoles } from '@/modules/core/models';
+import { PermissionRoles } from '@/modules/core/models';
 
 import { TabState, useAPIToken } from './APIToken';
 import { FeatureConfig, useCommingSoon } from './CommingSoon';
@@ -16,13 +17,15 @@ export const requiredCLIRoles = [
   PermissionRoles.ADMIN,
   PermissionRoles.OWNER,
   PermissionRoles.MANAGER,
+  PermissionRoles.SIGNER,
 ];
 
 export enum CLIFeaturesLabels {
-  API_TOKEN = 'API Tokens',
+  API_TOKEN = 'API Token',
   ADD_OTHER_TOKENS = 'Add other tokens',
   RECOVERY = 'Recovery',
-  SPEND_LIMIT = 'Spend limit',
+  SPEND_LIMIT = 'Spending limit',
+  EXPORT_WALLET = 'Export Wallet',
 }
 
 export interface IUseCLIProps {
@@ -37,23 +40,26 @@ const useCLI = ({ currentWorkspace, userId, vault }: IUseCLIProps) => {
   );
 
   const hasPermission = useMemo(() => {
-    const memberPermission =
-      vault?.owner?.id === userId
-        ? defaultPermissions[PermissionRoles.OWNER]
-        : defaultPermissions[PermissionRoles.SIGNER];
-    const hasRequiredPermission =
-      memberPermission &&
-      requiredCLIRoles.filter((p) => (memberPermission[p] ?? []).includes('*'))
-        .length > 0;
-
-    const hasPerm = hasRequiredPermission;
-    return hasPerm;
+    // const memberPermission =
+    //   vault?.owner?.id === userId
+    //     ? defaultPermissions[PermissionRoles.OWNER]
+    //     : defaultPermissions[PermissionRoles.SIGNER];
+    // const hasRequiredPermission =
+    //   memberPermission &&
+    //   requiredCLIRoles.filter((p) => (memberPermission[p] ?? []).includes('*'))
+    //     .length > 0;
+    //
+    // const hasPerm = hasRequiredPermission;
+    // return hasPerm;
+    return true;
   }, [userId, vault?.id, currentWorkspace]);
 
   const { dialog, steps, tabs, create, remove, list, hasToken } =
     useAPIToken(hasPermission);
 
-  const { commingSoonDialog, features, handleAction } = useCommingSoon();
+  const { commingSoonDialog, features, handleAction } = useCommingSoon(
+    vault?.predicateAddress ?? '',
+  );
 
   const handleOpen = (feature: FeatureConfig) => {
     setSelectedFeature(feature);
@@ -63,7 +69,7 @@ const useCLI = ({ currentWorkspace, userId, vault }: IUseCLIProps) => {
   const settings = [
     {
       label: CLIFeaturesLabels.API_TOKEN,
-      icon: CoinsIcon,
+      icon: KeyIcon,
       disabled: !hasPermission,
       onClick: () => {
         hasToken ? tabs.set(TabState.LIST) : tabs.set(TabState.CREATE);
@@ -95,6 +101,14 @@ const useCLI = ({ currentWorkspace, userId, vault }: IUseCLIProps) => {
       onClick: () => {
         handleOpen(features[CLIFeaturesLabels.SPEND_LIMIT]);
         handleAction(CLIFeaturesLabels.SPEND_LIMIT);
+      },
+    },
+    {
+      label: CLIFeaturesLabels.EXPORT_WALLET,
+      icon: UploadFile,
+      disabled: !hasPermission,
+      onClick: () => {
+        handleAction(CLIFeaturesLabels.EXPORT_WALLET);
       },
     },
   ];

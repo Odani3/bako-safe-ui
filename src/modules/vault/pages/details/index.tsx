@@ -1,267 +1,165 @@
-import {
-  Box,
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  Button,
-  Divider,
-  HStack,
-  Icon,
-  Spacer,
-  Spinner,
-  Text,
-  useDisclosure,
-} from '@chakra-ui/react';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { Box, Grid, GridItem, Loader, Text } from 'bako-ui';
+import { useEffect, useMemo } from 'react';
 
-import { CustomSkeleton, HomeIcon, TransactionTypeFilters } from '@/components';
+import { TransactionFilters } from '@/components';
 import AddAssetsDialog from '@/components/addAssetsDialog';
 import DepositDialog from '@/components/depositDialog';
 import { EmptyState } from '@/components/emptyState';
-import { MenuIcon } from '@/components/icons/menu';
 import WelcomeDialog from '@/components/welcomeDialog';
-import { Drawer } from '@/layouts/dashboard/drawer';
-import { PermissionRoles } from '@/modules/core';
-import { useGetParams } from '@/modules/core/hooks';
-import { Pages } from '@/modules/core/routes';
-import { useTemplateStore } from '@/modules/template/store/useTemplateStore';
-import {
-  TransactionCard,
-  TransactionCardMobile,
-  transactionStatus,
-  WaitingSignatureBadge,
-} from '@/modules/transactions';
+import { CardLiquidStake } from '@/modules';
+import { useBakoSafeVault } from '@/modules/core/hooks';
+import { useDisclosure } from '@/modules/core/hooks/useDisclosure';
+import { TransactionCard, WaitingSignatureBadge } from '@/modules/transactions';
+import { TransactionListSkeleton } from '@/modules/transactions/components/TransactionListSkeleton';
+import { useTransactionSocketListener } from '@/modules/transactions/hooks/events/useTransactionsSocketListener';
 import { useTransactionsContext } from '@/modules/transactions/providers/TransactionsProvider';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
-import { limitCharacters } from '@/utils/limit-characters';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
-import { CardDetails } from '../../components/CardDetails';
-import { SignersDetails } from '../../components/SignersDetails';
-import { useVaultInfosContext } from '../../VaultInfosProvider';
+import { AccountAllocation, AccountOverview } from '../../components';
+import { useCheckPredicateBalances, useVaultInfosContext } from '../../hooks';
+import { usePredicateBalanceOutdatedSocketListener } from '../../hooks/events';
+import { vaultInfinityQueryKey } from '../../hooks/list/useVaultTransactionsRequest';
 
 const VaultDetailsPage = () => {
-  const [welcomeDialogState, setWelcomeDialogState] = useState(true);
-  const [addAssetsDialogState, setAddAssetsDialogState] = useState(false);
-  const [depositDialogState, setDepositDialogState] = useState(false);
-  const menuDrawer = useDisclosure();
+  const { isOpen: welcomeDialogState, onOpenChange: setWelcomeDialogState } =
+    useDisclosure(true);
   const {
-    vaultPageParams: { workspaceId: vaultWkId },
-  } = useGetParams();
-  const navigate = useNavigate();
-  const { vaultPageParams } = useGetParams();
-  const { vault, assets, account } = useVaultInfosContext();
+    isOpen: addAssetsDialogState,
+    onOpenChange: setAddAssetsDialogState,
+    onOpen: setIsAddAssetDialogOpen,
+  } = useDisclosure();
+  const {
+    isOpen: depositDialogState,
+    onOpenChange: setDepositDialogState,
+    setOpen: setOpenDepositDialog,
+  } = useDisclosure();
+  const { vault, assets } = useVaultInfosContext();
 
   const {
     vaultTransactions: {
-      filter: { txFilterType },
+      filter: { txFilterType, value: status },
       lists: { transactions },
-      request: { isLoading, isFetching },
-      handlers: { handleIncomingAction, handleOutgoingAction },
-      inView,
+      request: { isLoading, isFetching, queryKey },
+      handlers: {
+        handleIncomingAction,
+        handleOutgoingAction,
+        handleAllAction,
+        handlePendingStatusChange,
+      },
       transactionsRef,
     },
     pendingSignerTransactions,
     isPendingSigner,
   } = useTransactionsContext();
-
-  const { setTemplateFormInitial } = useTemplateStore();
+  const queryClient = useQueryClient();
 
   const {
     authDetails: { userInfos },
-    workspaceInfos: {
-      handlers: {
-        // handleWorkspaceSelection,
-        hasPermission,
-        goHome,
-      },
-    },
-    screenSizes: {
-      vaultRequiredSizeToColumnLayout,
-      isSmall,
-      isMobile,
-      isLarge,
-    },
+    screenSizes: { isSmall, isMobile },
   } = useWorkspaceContext();
 
-  const workspaceId = userInfos.workspace?.id ?? '';
-  const hasTransactions = !isLoading && transactions?.length;
+  const hasTransactions = useMemo(
+    () => !isLoading && transactions?.length,
+    [isLoading, transactions],
+  );
 
-  const { OWNER, SIGNER } = PermissionRoles;
+  const { vault: vaultSafe } = useBakoSafeVault({
+    address: vault.data.predicateAddress,
+    provider: vault.data.provider,
+    id: vault.data.id,
+  });
 
-  const canSetTemplate = hasPermission([SIGNER]) || hasPermission([OWNER]);
+  useEffect(() => {
+    return () => {
+      queryClient.removeQueries({ queryKey, exact: true });
+    };
+  }, []);
 
-  const hideSetTemplateButton = true;
+  const vaultQueryKey =
+    vaultInfinityQueryKey.VAULT_TRANSACTION_LIST_PAGINATION_QUERY_KEY(
+      vault.data?.id ?? undefined,
+    );
+
+  const workspaceId = userInfos?.workspace?.id || '';
+
+  useTransactionSocketListener(vaultQueryKey ?? []);
+  useCheckPredicateBalances(vault.data?.id ?? '');
+  usePredicateBalanceOutdatedSocketListener();
 
   if (!vault) return null;
 
   return (
     <Box w="full">
-      <Drawer isOpen={menuDrawer.isOpen} onClose={menuDrawer.onClose} />
-
       <WelcomeDialog
         isOpen={welcomeDialogState}
-        setIsWelcomeDialogOpen={setWelcomeDialogState}
-        setIsDepositDialogOpen={setDepositDialogState}
+        onOpenChange={setWelcomeDialogState}
+        setIsDepositDialogOpen={setOpenDepositDialog}
       />
 
       <DepositDialog
         isOpen={depositDialogState}
-        setIsDepositDialogOpen={setDepositDialogState}
+        onOpenChange={setDepositDialogState}
         vault={vault.data}
       />
 
       <AddAssetsDialog
         isOpen={addAssetsDialogState}
-        setIsAddAssetDialogOpen={setAddAssetsDialogState}
-        setIsDepositDialogOpen={setDepositDialogState}
+        onOpenChange={setAddAssetsDialogState}
+        setIsDepositDialogOpen={setOpenDepositDialog}
       />
 
-      <HStack mb={9} w="full" justifyContent="space-between">
-        {vaultRequiredSizeToColumnLayout ? (
-          <HStack gap={4} onClick={menuDrawer.onOpen}>
-            <Icon as={MenuIcon} fontSize="md" color="grey.200" />
-            <Text fontSize="sm" fontWeight="normal" color="grey.100">
-              Menu
-            </Text>
-          </HStack>
-        ) : (
-          <Breadcrumb>
-            <BreadcrumbItem>
-              <BreadcrumbLink
-                fontSize="sm"
-                color="grey.200"
-                fontWeight="semibold"
-                onClick={() => goHome()}
-              >
-                <Icon mr={2} as={HomeIcon} fontSize="sm" color="grey.200" />
-                Home
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-
-            {/* Commented out code to temporarily disable workspaces. */}
-
-            {/* {!userInfos.onSingleWorkspace && (
-              <BreadcrumbItem>
-                <BreadcrumbLink
-                  fontSize="sm"
-                  color="grey.200"
-                  fontWeight="semibold"
-                  onClick={() =>
-                    handleWorkspaceSelection(
-                      workspaceId,
-                      Pages.workspace({
-                        workspaceId: userInfos.workspace?.id,
-                      }),
-                      true,
-                    )
-                  }
-                  maxW={40}
-                  isTruncated
-                >
-                  {userInfos.workspace?.name}
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-            )} */}
-
-            <BreadcrumbItem>
-              <BreadcrumbLink
-                fontSize="sm"
-                color="grey.200"
-                fontWeight="semibold"
-                onClick={() =>
-                  navigate(
-                    Pages.userVaults({
-                      workspaceId,
-                    }),
-                  )
-                }
-              >
-                Vaults
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-
-            <BreadcrumbItem>
-              <BreadcrumbLink
-                fontSize="sm"
-                color="grey.200"
-                fontWeight="semibold"
-                href="#"
-                isTruncated
-                maxW={640}
-              >
-                {limitCharacters(vault?.data?.name ?? '', 25)}
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-          </Breadcrumb>
-        )}
-        {!hideSetTemplateButton && (
-          <Button
-            color="dark.200"
-            bgColor="grey.200"
-            fontWeight="medium"
-            fontSize={{ base: 'sm', sm: 'md' }}
-            border="none"
-            isDisabled={!canSetTemplate || true} // todo: fix this
-            onClick={() => {
-              if (
-                !vault.data?.id ||
-                !vault.data?.minSigners ||
-                !vault.data.members ||
-                !vaultPageParams.workspaceId
-              )
-                return;
-              setTemplateFormInitial({
-                minSigners: vault.data?.minSigners,
-                addresses:
-                  vault.data.members! &&
-                  vault.data?.members.map((signer) => signer.address),
-              });
-              navigate(
-                Pages.createTemplate({
-                  vaultId: vault.data.id!,
-                  workspaceId: vaultPageParams.workspaceId!,
-                }),
-              );
-            }}
-          >
-            Set as template
-          </Button>
-        )}
-      </HStack>
-
-      <HStack
-        mb={{ base: 10, sm: 14 }}
-        alignItems="flex-start"
-        w="full"
+      <Grid
+        alignItems="stretch"
         gap={10}
+        templateColumns={{
+          base: 'repeat(1, 1fr)',
+          md: 'repeat(2, 1fr)',
+          lg: 'repeat(8, 1fr)',
+        }}
       >
-        <CardDetails
-          vault={vault}
-          assets={assets}
-          isPendingSigner={isPendingSigner}
-          setAddAssetsDialogState={setAddAssetsDialogState}
-        />
+        <GridItem
+          colSpan={{
+            md: 2,
+            lg: 3,
+          }}
+          minW={{ base: 0, sm: 'unset' }}
+        >
+          <AccountOverview
+            vault={vault}
+            onAddAssets={setIsAddAssetDialogOpen}
+            isPendingSigner={isPendingSigner}
+          />
+        </GridItem>
+        <GridItem colSpan={{ lg: 2 }}>
+          <AccountAllocation
+            assets={assets}
+            vault={vault}
+            workspaceId={workspaceId}
+          />
+        </GridItem>
+        <GridItem colSpan={{ lg: 3 }}>
+          <CardLiquidStake assets={assets} vault={vaultSafe} />
+        </GridItem>
+      </Grid>
 
-        <SignersDetails
-          vault={vault}
-          display={{ base: 'none', xs: !isLarge ? 'block' : 'none' }}
-        />
-      </HStack>
       <Box
         w="full"
         display="flex"
-        flexDir={{ base: 'column', xs: isSmall ? 'column' : 'row' }}
+        flexDir={{ base: 'row', sm: isSmall ? 'column' : 'row' }}
+        alignItems="center"
         gap={4}
-        mb={4}
+        mt={{ md: 10, base: 4 }}
+        mb={{ base: 4, md: 6 }}
+        justifyContent="space-between"
       >
         <Box
           display="flex"
-          flexDir={{ base: 'column', xs: isSmall ? 'column' : 'row' }}
-          alignItems={{ base: 'start', xs: isSmall ? 'unset' : 'center' }}
+          flexDir={{ base: 'column', sm: isSmall ? 'column' : 'row' }}
+          alignItems={{ base: 'start', sm: isSmall ? 'unset' : 'center' }}
           gap={isSmall ? 2 : 4}
         >
-          <Text fontWeight={700} fontSize="md" color="grey.50">
+          <Text as="h2" fontWeight="semibold" fontSize="sm" color="textPrimary">
             Transactions
           </Text>
           <WaitingSignatureBadge
@@ -269,107 +167,57 @@ const VaultDetailsPage = () => {
             quantity={pendingSignerTransactions.data?.ofUser ?? 0}
           />
         </Box>
-        <Spacer />
-        {
-          <TransactionTypeFilters
-            currentFilter={txFilterType}
-            incomingAction={handleIncomingAction}
-            outgoingAction={handleOutgoingAction}
-            buttonsFullWidth={isSmall}
-          />
-        }
+
+        <TransactionFilters
+          currentFilter={txFilterType}
+          onIncomingFilter={handleIncomingAction}
+          onOutgoingFilter={handleOutgoingAction}
+          onAllFilter={handleAllAction}
+          status={status}
+          isPendingSignerTransaction={isPendingSigner}
+          onPendingFilter={handlePendingStatusChange}
+          justifyContent="flex-end"
+        />
       </Box>
 
-      <CustomSkeleton
-        minH="30vh"
-        isLoaded={!vault.isLoading && !isLoading}
-        h={!vault.isLoading && !isLoading ? 'unset' : '100px'}
-      >
-        {hasTransactions
-          ? transactions?.map((grouped) => (
-              <>
-                <HStack w="full">
-                  <Text
-                    fontSize="sm"
-                    fontWeight="semibold"
-                    color="grey.425"
-                    whiteSpace="nowrap"
-                  >
-                    {grouped.monthYear}
-                  </Text>
-                  <Divider w="full" borderColor="grey.950" />
-                </HStack>
+      {isLoading && <TransactionListSkeleton />}
+
+      {hasTransactions
+        ? transactions?.map((grouped, index) => {
+            const isLastGroup = index === transactions.length - 1;
+            return (
+              <Box key={grouped.day} w="full">
+                <TransactionCard.GroupDay
+                  day={grouped.day}
+                  mt={{ base: 3, md: 0 }}
+                  mb={2}
+                />
                 <TransactionCard.List
-                  mt={5}
-                  pb={!isLarge ? 10 : 0}
                   w="full"
                   maxH={{ base: undefined, sm: 'calc(100% - 72px)' }}
-                  spacing={0}
+                  gap={0}
                 >
-                  {grouped?.transactions?.map((transaction) => {
-                    const status = transactionStatus({
-                      ...transaction,
-                      account,
-                    });
-                    const isSigner = !!transaction.predicate?.members?.find(
-                      (member) => member.address === account,
-                    );
+                  {grouped?.transactions?.map((transaction) => (
+                    <TransactionCard.Item
+                      w="full"
+                      key={transaction.id}
+                      ref={transactionsRef}
+                      isMobile={isMobile}
+                      transaction={transaction}
+                      userInfos={userInfos}
+                    />
+                  ))}
 
-                    return (
-                      <Box key={transaction.id} ref={transactionsRef} w="full">
-                        {isMobile ? (
-                          <TransactionCardMobile
-                            isSigner={isSigner}
-                            transaction={transaction}
-                            account={account}
-                            mt={2.5}
-                            w="full"
-                          />
-                        ) : (
-                          <TransactionCard.Container
-                            mb={2.5}
-                            key={transaction.id}
-                            status={status}
-                            isSigner={isSigner}
-                            transaction={transaction}
-                            account={account}
-                            details={
-                              <TransactionCard.Details
-                                transaction={transaction}
-                                status={status}
-                              />
-                            }
-                          />
-                        )}
-                      </Box>
-                    );
-                  })}
-                  <Box ref={inView.ref} />
-
-                  {grouped.transactions.length >= 5 && isFetching && (
-                    <Spinner alignSelf={'center'} mt={4} color="brand.500" />
-                  )}
+                  {isLastGroup &&
+                    grouped.transactions.length >= 5 &&
+                    isFetching && (
+                      <Loader alignSelf="center" mt={4} color="brand.500" />
+                    )}
                 </TransactionCard.List>
-              </>
-            ))
-          : !hasTransactions &&
-            !!transactions && (
-              <EmptyState
-                title={'No Data available'}
-                subTitle={
-                  'Currently, there is no available data to display in this section.'
-                }
-                showAction={false}
-                mb={10}
-              />
-            )}
-      </CustomSkeleton>
-
-      {isLarge && (
-        <Box mt={7}>
-          <SignersDetails vault={vault} />
-        </Box>
-      )}
+              </Box>
+            );
+          })
+        : !!transactions && !isLoading && <EmptyState showAction={false} />}
     </Box>
   );
 };

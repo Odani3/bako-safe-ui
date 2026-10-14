@@ -1,24 +1,28 @@
 import debounce from 'lodash.debounce';
-import { ChangeEvent, useCallback, useEffect, useState } from 'react';
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useInView } from 'react-intersection-observer';
 
 import { Pages } from '@/modules/core/routes';
 import { useTransactionsContext } from '@/modules/transactions/providers/TransactionsProvider';
 import { useVaultListRequest } from '@/modules/vault/hooks';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
 import { PredicateAndWorkspace } from '../../services/methods';
 
 interface UseVaultDrawerParams {
   onClose?: () => void;
+  onCloseAll?: () => void;
   isOpen?: boolean;
   orderByRoot?: boolean;
   perPage?: number;
 }
 
-const useVaultDrawer = (props: UseVaultDrawerParams) => {
-  const inView = useInView({ delay: 300 });
+const SEARCH_DEBOUNCE_MS = 500;
+
+export const useVaultDrawer = (props: UseVaultDrawerParams) => {
   const [search, setSearch] = useState('');
+
+  const inView = useInView({ delay: 300 });
 
   const {
     authDetails: { userInfos },
@@ -41,17 +45,29 @@ const useVaultDrawer = (props: UseVaultDrawerParams) => {
     resetAllTransactionsTypeFilters,
   } = useTransactionsContext();
 
-  const vaultList = useVaultListRequest(
-    { q: search, perPage: props.perPage, orderByRoot: props.orderByRoot },
-    props.isOpen,
+  const searchParams = useMemo(
+    () => ({
+      q: search,
+      perPage: props.perPage,
+      orderByRoot: props.orderByRoot,
+    }),
+    [search, props.perPage, props.orderByRoot],
   );
 
-  const invalidateRequests = () => {
+  const vaultList = useVaultListRequest(searchParams, props.isOpen);
+
+  const invalidateRequests = useCallback(() => {
     refetchVaultTransactions();
     refetchVaultRequest();
     refetchWorkspaceBalance();
     vaultList.refetch();
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    refetchVaultTransactions,
+    refetchVaultRequest,
+    refetchWorkspaceBalance,
+    vaultList.refetch,
+  ]);
 
   const debouncedSearchHandler = useCallback(
     debounce((event: string | ChangeEvent<HTMLInputElement>) => {
@@ -61,7 +77,7 @@ const useVaultDrawer = (props: UseVaultDrawerParams) => {
       }
 
       setSearch(event.target.value);
-    }, 300),
+    }, SEARCH_DEBOUNCE_MS),
     [],
   );
 
@@ -71,7 +87,6 @@ const useVaultDrawer = (props: UseVaultDrawerParams) => {
     }
   }, [
     inView.inView,
-    vaultList.isFetching,
     vaultList.isLoading,
     vaultList.fetchNextPage,
     vaultList.hasNextPage,
@@ -82,7 +97,9 @@ const useVaultDrawer = (props: UseVaultDrawerParams) => {
       setSelectedTransaction({ id: '', name: '' });
     }
 
-    props.onClose?.();
+    if (props.onCloseAll) props.onCloseAll();
+    else props.onClose?.();
+
     resetAllTransactionsTypeFilters();
     invalidateRequests();
     setSearch('');
@@ -95,14 +112,14 @@ const useVaultDrawer = (props: UseVaultDrawerParams) => {
     );
   };
 
-  const onCloseDrawer = () => {
+  const onCloseDrawer = useCallback(() => {
     props.onClose?.();
     setSearch('');
-  };
+  }, [props.onClose]);
 
   return {
     drawer: {
-      onSelectVault: onSelectVault,
+      onSelectVault,
       onClose: onCloseDrawer,
     },
     search: {
@@ -113,5 +130,3 @@ const useVaultDrawer = (props: UseVaultDrawerParams) => {
     inView,
   };
 };
-
-export { useVaultDrawer };

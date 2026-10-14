@@ -7,13 +7,13 @@ import {
 } from 'bakosafe';
 import { bn } from 'fuels';
 
+import { getAssetInfo } from '@/modules/assets-tokens/hooks/useAssetMap';
 import {
   TransactionService,
   TransactionWithVault,
 } from '@/modules/transactions/services';
 
 import { AssetMap } from '../..';
-import { getAssetInfo } from '../../utils/assets/data';
 import { instantiateVault } from './instantiateVault';
 import { sendTransaction } from './sendTransaction';
 import { useBakoSafeMutation, useBakoSafeQuery } from './utils';
@@ -40,12 +40,13 @@ interface UseBakoSafeCreateTransactionParams {
   vault: Vault;
   assetsMap: AssetMap;
   onSuccess: (result: TransactionWithVault) => void;
-  onError: () => void;
+  onError: (error: Error) => void;
 }
 
 const useBakoSafeCreateTransaction = ({
   vault,
-  assetsMap,
+  onSuccess,
+  onError,
   ...options
 }: UseBakoSafeCreateTransactionParams) => {
   return useBakoSafeMutation(
@@ -54,20 +55,32 @@ const useBakoSafeCreateTransaction = ({
       const { hashTxId } = await vault.transaction({
         name: payload.name!,
         assets: payload.assets.map((asset) => {
-          const { units } = getAssetInfo(assetsMap, asset.assetId);
+          const info = getAssetInfo(asset.assetId);
+          const units = info?.units ?? info?.decimals ?? 9;
 
           return {
             ...asset,
-            amount: bn.parseUnits(asset.amount, units).format(),
+            amount: bn
+              .parseUnits(
+                asset.amount.replace(/,/g, ''),
+                info.isNFT ? undefined : units,
+              )
+              .format(),
           };
         }),
       });
+
       const transaction = await TransactionService.getByHash(hashTxId, [
         TransactionStatus.AWAIT_REQUIREMENTS,
       ]);
+
       return transaction;
     },
-    options,
+    {
+      onSuccess,
+      onError,
+      ...options,
+    },
   );
 };
 

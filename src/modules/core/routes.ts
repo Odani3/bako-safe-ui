@@ -18,8 +18,19 @@ const Pages = {
   vaultSettings: pageRoute<{ workspaceId: string; vaultId: string }>(
     '/workspace/:workspaceId/vault/:vaultId/settings',
   ),
+  vaultBuySell: pageRoute<{ workspaceId: string; vaultId: string }>(
+    '/workspace/:workspaceId/vault/:vaultId/buy-sell',
+  ),
+  vaultBuySellSession: pageRoute<{
+    workspaceId: string;
+    vaultId: string;
+    sessionId: string;
+  }>('/workspace/:workspaceId/vault/:vaultId/buy-sell/session/:sessionId'),
   userVaults: pageRoute<{ workspaceId: string }>(
     '/workspace/:workspaceId/list/vault/me',
+  ),
+  vaultSwap: pageRoute<{ workspaceId: string; vaultId: string }>(
+    '/workspace/:workspaceId/vault/:vaultId/swap',
   ),
 
   addressBook: pageRoute<{ workspaceId: string }>(
@@ -52,6 +63,7 @@ const Pages = {
   dappAuth: pageRoute('/dapp'),
   dappTransaction: pageRoute('/dapp/transaction'),
   dappSign: pageRoute('/dapp/sign/:message'),
+  dappNetwork: pageRoute('/dapp/network'),
 
   //terms
   termsOfUse: pageRoute('/terms-of-use'),
@@ -68,6 +80,10 @@ const Pages = {
 
   balanceWorkspace: pageRoute<{ workspaceId: string }>(
     '/workspace/:workspaceId/balance',
+  ),
+
+  bridge: pageRoute<{ vaultId: string; workspaceId: string }>(
+    '/workspace/:workspaceId/vault/:vaultId/bridge',
   ),
 
   workspace: pageRoute<{ workspaceId: string }>('/workspace/:workspaceId'),

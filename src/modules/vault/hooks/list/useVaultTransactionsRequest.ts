@@ -2,7 +2,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { TransactionType } from 'bakosafe';
 
 import { SortOptionTx } from '@/modules/core/hooks/bakosafe/utils/types';
-import { useGroupTransactionsByMonth } from '@/modules/core/hooks/useGroupTransactionsByMonth';
+import { useGroupTransactionsByDay } from '@/modules/core/hooks/useGroupTransactionsByDay';
 import {
   GetTransactionsWithIncomingsParams,
   TransactionOrderBy,
@@ -23,7 +23,16 @@ export const vaultInfinityQueryKey = {
     status?: string,
     type?: TransactionType,
     id?: string,
-  ) => [VAULT_TRANSACTIONS_LIST_PAGINATION, vaultId, status, type, id],
+  ) => {
+    const key = [VAULT_TRANSACTIONS_LIST_PAGINATION];
+
+    if (vaultId) key.push(vaultId);
+    if (status) key.push(status);
+    if (type) key.push(type);
+    if (id) key.push(id);
+
+    return key;
+  },
 };
 
 const useVaultTransactionsRequest = (
@@ -56,9 +65,11 @@ const useVaultTransactionsRequest = (
         return data;
       }),
     refetchOnReconnect: false,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     enabled: !!params.predicateId && !!params.predicateId[0],
     initialPageParam: { offsetDb: 0, offsetFuel: 0 },
+    // Socket events handle real-time updates
+    staleTime: 1000 * 60 * 2, // 2 minutes
     getNextPageParam: (lastPage) => {
       if (lastPage?.data?.length === 0) {
         return undefined;
@@ -73,7 +84,8 @@ const useVaultTransactionsRequest = (
 
   return {
     ...query,
-    transactions: useGroupTransactionsByMonth(transactionsList),
+    queryKey,
+    transactions: useGroupTransactionsByDay(transactionsList),
   };
 };
 

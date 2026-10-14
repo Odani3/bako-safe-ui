@@ -1,8 +1,11 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+
+import { DEFAULT_INITIAL_PAGE_PARAM } from '@/utils/constants';
 
 import { GetAllPredicatesPayload, VaultService } from '../services';
 
-const USER_VAULTS_QUERY_KEY = 'predicate/by-user-address';
+export const USER_VAULTS_QUERY_KEY = 'predicate/by-user-address';
 
 const useUserVaultRequest = (
   userAddress: string,
@@ -14,9 +17,9 @@ const useUserVaultRequest = (
       VaultService.getAllWithPagination({
         ...filter,
         perPage: filter.perPage || 8,
-        page: pageParam || 0,
+        page: pageParam || DEFAULT_INITIAL_PAGE_PARAM,
       }),
-    initialPageParam: 0,
+    initialPageParam: DEFAULT_INITIAL_PAGE_PARAM,
     getNextPageParam: (lastPage) =>
       lastPage.currentPage !== lastPage.totalPages
         ? lastPage.nextPage
@@ -24,11 +27,25 @@ const useUserVaultRequest = (
     refetchOnWindowFocus: false,
     enabled: window.location.pathname != '/',
     refetchOnMount: false,
-    staleTime: 500,
+    staleTime: 1000 * 60 * 5, // 5 minutes - socket events handle real-time updates
   });
 
+  const vaults = useMemo(
+    () =>
+      data?.pages.flatMap((page) =>
+        page.data.map((vault) => ({
+          ...vault,
+          configurable:
+            typeof vault.configurable === 'string'
+              ? JSON.parse(vault.configurable)
+              : vault.configurable,
+        })),
+      ) ?? [],
+    [data],
+  );
+
   return {
-    vaults: data?.pages.map((page) => page.data).flat() ?? [],
+    vaults,
     ...query,
   };
 };

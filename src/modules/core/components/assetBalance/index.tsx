@@ -1,149 +1,147 @@
-import {
-  Card,
-  Grid,
-  HStack,
-  Icon,
-  IconButton,
-  Image,
-  Text,
-  VStack,
-} from '@chakra-ui/react';
-import { css } from '@emotion/react';
+import { Box, Card, Grid, GridItem, Heading, Skeleton, Text } from 'bako-ui';
+import { useMemo } from 'react';
 
-import { UpRightArrow } from '@/components';
-import { BakoIcon } from '@/components/icons/assets/bakoIcon';
-import {
-  AddressUtils,
-  Asset,
-  NFT,
-  shakeAnimationY,
-} from '@/modules/core/utils';
-import { NetworkService } from '@/modules/network/services';
-import { useVaultInfosContext } from '@/modules/vault/VaultInfosProvider';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import AdvancedDonut from '@/components/chart/advanced-donut';
+import { DonutColors } from '@/components/chart/color';
+import { Asset, NFT } from '@/modules/core/utils';
+import { useVaultAllocationRequest } from '@/modules/vault';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
-import { useGetTokenInfos } from '../../hooks';
+import { useOrderAssetsByUSD } from '../../hooks';
+import { AssetsBalanceCard } from './assets-balance-card';
+import { NftBalanceCard } from './nfts-balance-card';
 
 interface AssetsBalanceProps {
   assets: Asset[];
+  predicateId: string;
+}
+
+interface NftsBalanceProps {
   nfts?: NFT[];
 }
 
-interface AssetsBalanceCardProps {
-  asset: Asset | NFT;
-  isNFT?: boolean;
-}
-
-const AssetsBalanceCard = ({
-  asset,
-  isNFT = false,
-}: AssetsBalanceCardProps) => {
-  const { vault } = useVaultInfosContext();
+const AssetsBalanceList = ({ assets, predicateId }: AssetsBalanceProps) => {
   const {
+    tokensUSD,
     assetsMap,
-    authDetails: {
-      userInfos: { network },
+    screenSizes: { isSmall },
+    workspaceInfos: {
+      infos: { visibleBalance },
     },
   } = useWorkspaceContext();
-  const { assetAmount, assetsInfo } = useGetTokenInfos({
-    ...asset,
-    assetsMap,
+  const { allocation, isLoading } = useVaultAllocationRequest(predicateId);
+  const stableAssets = useMemo(() => assets, [assets]);
+  const stableTokensUSD = useMemo(() => tokensUSD, [tokensUSD]);
+  const stableAssetsMap = useMemo(() => assetsMap, [assetsMap]);
+
+  const assetsOrdered = useOrderAssetsByUSD({
+    assets: stableAssets,
+    tokensUSD: stableTokensUSD.data,
+    assetsMap: stableAssetsMap,
   });
-
-  const redirectToNetwork = () =>
-    window.open(
-      `${NetworkService.getExplorer(network.url)}/account/${vault.data.predicateAddress}/assets`,
-      '_BLANK',
-    );
-
-  return (
-    <Card
-      p={4}
-      borderRadius={8}
-      borderWidth="1px"
-      borderColor="grey.950"
-      backgroundColor="dark.50"
-      backdropFilter="blur(6px)"
-      boxShadow="lg"
-    >
-      <VStack alignItems="flex-start" gap={2}>
-        {isNFT ? (
-          <Icon as={BakoIcon} w={{ base: 8, sm: 10 }} h={{ base: 8, sm: 10 }} />
-        ) : (
-          <Image
-            w={{ base: 8, sm: 10 }}
-            h={{ base: 8, sm: 10 }}
-            src={assetsInfo?.icon ?? ''}
-            borderRadius={100}
-            alt="Asset Icon"
-            objectFit="cover"
-          />
-        )}
-        <VStack alignItems="flex-start" gap={0} maxW="full">
-          <HStack>
-            <Text fontSize="sm" color="grey.50" maxW="full" isTruncated>
-              {isNFT
-                ? AddressUtils.format(asset.assetId ?? '', 10)
-                : assetsInfo.name}
-            </Text>
-            {isNFT && (
-              <IconButton
-                icon={
-                  <Icon
-                    className="nft-icon-1"
-                    as={UpRightArrow}
-                    fontSize="md"
-                    color="grey.75"
-                  />
-                }
-                aria-label="Explorer"
-                size="xs"
-                minW={2}
-                bg="none"
-                h={3}
-                _hover={{ bg: 'none' }}
-                css={css`
-                  &:hover .nft-icon-1 {
-                    animation: ${shakeAnimationY} 0.5s ease-in-out;
-                  }
-                `}
-                onClick={redirectToNetwork}
-              />
-            )}
-          </HStack>
-          <Text fontSize="xs" color="grey.250">
-            {isNFT ? 'NFT' : assetsInfo.slug}
-          </Text>
-        </VStack>
-        <Text fontSize="sm" color="grey.50" maxW="full" isTruncated>
-          {isNFT ? 1 : assetAmount}
-        </Text>
-      </VStack>
-    </Card>
+  const data = useMemo(
+    () =>
+      allocation?.data.map((asset, i) => ({
+        label: asset.assetId ? stableAssetsMap[asset.assetId]?.name : 'Other',
+        value: asset.amountInUSD,
+        percentage: asset.percentage,
+        color: DonutColors[i % DonutColors.length], // Cycle through colors if more assets than colors
+      })) ?? [],
+    [allocation, stableAssetsMap],
   );
-};
 
-const AssetsBalanceList = ({ assets, nfts }: AssetsBalanceProps) => {
+  const isEmpty = useMemo(() => data.length === 0, [data]);
+
   return (
     <Grid
-      gap={4}
       templateColumns={{
-        base: 'repeat(1, 1fr)',
-        xs: 'repeat(2, 1fr)',
-        sm: 'repeat(3, 1fr)',
-        md: 'repeat(4, 1fr)',
-        xl: 'repeat(5, 1fr)',
-        '2xl': 'repeat(6, 1fr)',
+        base: '1fr',
+        md: '1fr 3fr',
       }}
+      gap={6}
     >
-      {assets.map((asset) => (
-        <AssetsBalanceCard key={asset.assetId} asset={asset} />
-      ))}
-      {nfts?.map((nft) => (
-        <AssetsBalanceCard key={nft.assetId} asset={nft} isNFT={true} />
-      ))}
+      <GridItem>
+        <Card.Root variant="subtle" bg="bg.panel" rounded="2xl">
+          <Card.Header>
+            <Heading
+              color="textPrimary"
+              fontSize="sm"
+              fontWeight="semibold"
+              letterSpacing="wider"
+            >
+              Balance allocation
+            </Heading>
+          </Card.Header>
+          <Card.Body justifyContent="center" alignItems="center">
+            {!isEmpty && (
+              <AdvancedDonut data={data} visibleBalance={!visibleBalance} />
+            )}
+            {isEmpty && !isLoading && (
+              <Text color="gray.400" textAlign="center" fontSize="xs">
+                Nothing to show here yet
+              </Text>
+            )}
+
+            {isLoading && (
+              <Box
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
+                w="full"
+              >
+                <Skeleton height="200px" w="200px" rounded="full" />
+              </Box>
+            )}
+          </Card.Body>
+        </Card.Root>
+      </GridItem>
+      <GridItem>
+        <Grid
+          gap={4}
+          templateColumns={{
+            base: isSmall ? 'repeat(1, 1fr)' : 'repeat(2, 1fr)',
+            sm: 'repeat(2, 1fr)',
+            xl: 'repeat(3, 1fr)',
+          }}
+        >
+          {assetsOrdered?.map((assetOrdered) => {
+            const asset = assetOrdered.asset;
+            const usdData = tokensUSD.data[asset.assetId.toLowerCase()];
+            const usdAmount = usdData?.usdAmount ?? null;
+            return (
+              <AssetsBalanceCard
+                key={asset.assetId}
+                asset={asset}
+                usdAmount={usdAmount}
+              />
+            );
+          })}
+        </Grid>
+      </GridItem>
     </Grid>
   );
 };
 
-export { AssetsBalanceList };
+const NftsBalanceList = ({ nfts }: NftsBalanceProps) => {
+  return (
+    <>
+      <Grid
+        gap={4}
+        templateColumns={{
+          base: 'repeat(2, 1fr)',
+          // xs: 'repeat(3, 1fr)',
+          sm: 'repeat(4, 1fr)',
+          md: 'repeat(5, 1fr)',
+          xl: 'repeat(5, 1fr)',
+          '2xl': 'repeat(6, 1fr)',
+        }}
+      >
+        {nfts?.map((nft) => (
+          <NftBalanceCard key={nft.assetId} nft={nft} />
+        ))}
+      </Grid>
+    </>
+  );
+};
+
+export { AssetsBalanceList, NftsBalanceList };

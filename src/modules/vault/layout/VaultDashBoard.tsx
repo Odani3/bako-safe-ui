@@ -1,11 +1,13 @@
-import { Flex } from '@chakra-ui/react';
+import { Flex, Stack } from 'bako-ui';
 import { Outlet } from 'react-router-dom';
 
 import { Container } from '@/layouts/dashboard/container';
 import { Content } from '@/layouts/dashboard/content';
-import { Header } from '@/layouts/dashboard/header';
+import { CreateContactDialog } from '@/modules/addressBook';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
+
+import { VaultLayoutHeader } from './header';
 import { Sidebar } from './sidebar';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
 
 interface VaultDashboardLayoutProps {
   children?: React.ReactNode;
@@ -14,14 +16,27 @@ interface VaultDashboardLayoutProps {
 const VaultDashboardLayout = (props: VaultDashboardLayoutProps) => {
   const {
     screenSizes: { vaultRequiredSizeToColumnLayout },
+    addressBookInfos: {
+      dialog: { contactDialog },
+      requests: { createContactRequest },
+      form: contactForm,
+    },
   } = useWorkspaceContext();
 
   return (
     <Container>
-      <Header />
+      <CreateContactDialog
+        form={contactForm}
+        dialog={contactDialog}
+        isLoading={createContactRequest.isPending}
+        isEdit={false}
+      />
       <Flex w="100%" flex={1}>
         {!vaultRequiredSizeToColumnLayout && <Sidebar />}
-        <Content>{props.children}</Content>
+        <Stack flex={1} w="100%">
+          <VaultLayoutHeader />
+          <Content w="full">{props.children}</Content>
+        </Stack>
       </Flex>
     </Container>
   );

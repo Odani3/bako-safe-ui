@@ -1,11 +1,11 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 
 import { NotificationsQueryKey } from '@/modules/core';
-import { SortOptionTx } from '@/modules/core/hooks/bakosafe/utils/types';
 import {
   SortOption,
   TransactionOrderBy,
 } from '@/modules/transactions/services';
+import { DEFAULT_INITIAL_PAGE_PARAM } from '@/utils/constants';
 
 import { NotificationService } from '../services';
 
@@ -15,15 +15,15 @@ const useListNotificationsRequest = (account: string) => {
     queryFn: ({ pageParam }) =>
       NotificationService.getAllWithPagination({
         perPage: 5,
-        page: pageParam || 0,
+        page: pageParam || DEFAULT_INITIAL_PAGE_PARAM,
         orderBy: TransactionOrderBy.CREATED_AT,
         sort: SortOption.DESC,
       }),
-    initialPageParam: 0,
+    initialPageParam: DEFAULT_INITIAL_PAGE_PARAM,
     getNextPageParam: ({ totalPages, currentPage, nextPage }) =>
       currentPage !== totalPages ? nextPage : undefined,
     refetchOnMount: false,
-    staleTime: 100, // 500ms second to prevent request spam
+    staleTime: 1000 * 60 * 2, // 2 minutes
     refetchOnWindowFocus: false,
   });
 

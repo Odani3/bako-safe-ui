@@ -1,6 +1,7 @@
-import { useDisclosure } from '@chakra-ui/react';
+import { useCallback } from 'react';
 
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import { useDisclosure } from '@/modules/core/hooks/useDisclosure';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
 const useDetailsDialog = () => {
   const detailsDialog = useDisclosure();
@@ -8,11 +9,11 @@ const useDetailsDialog = () => {
     screenSizes: { isMobile },
   } = useWorkspaceContext();
 
-  const onOpen = () => {
+  const onOpen = useCallback(() => {
     if (!isMobile) return;
 
     detailsDialog.onOpen();
-  };
+  }, [detailsDialog, isMobile]);
 
   return {
     ...detailsDialog,

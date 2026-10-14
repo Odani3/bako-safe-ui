@@ -1,16 +1,30 @@
 import { ITransactionResume, TransactionStatus } from 'bakosafe';
 import { bn } from 'fuels';
 
+import {
+  BridgeIcon,
+  DownLeftArrowGreen,
+  LiquidStakeIcon,
+  SwapIcon,
+  UpRightArrowYellow,
+} from '@/components';
+import { ContractIcon } from '@/components/icons/tx-contract';
+import { DeployIcon } from '@/components/icons/tx-deploy';
+
 import { ITransaction } from '../core/hooks/bakosafe/utils/types';
-import { AssetModel, WitnessStatus } from '../core/models';
+import {
+  AssetModel,
+  TransactionStatusWithOnOffRamp,
+  WitnessStatus,
+} from '../core/models';
 import { NativeAssetId } from '../core/utils';
 
-const { REJECTED, DONE, PENDING } = WitnessStatus;
+const { REJECTED, DONE, PENDING, CANCELED } = WitnessStatus;
 
 export interface TransactionStatusParams {
   account: string;
   resume: ITransactionResume;
-  status: TransactionStatus;
+  status: TransactionStatus | TransactionStatusWithOnOffRamp;
 }
 
 /* TODO: Fix this to use bako safe SDK */
@@ -33,10 +47,15 @@ export const transactionStatus = ({
       signatureCount >= minSigners ||
       transaction.status === TransactionStatus.SUCCESS,
     isDeclined: witness?.status === REJECTED,
-    isSigned: witness?.status === DONE,
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    isSigned: [DONE, CANCELED].includes(witness?.status),
     isPending: witness?.status !== PENDING,
     isReproved: vaultMembersCount - howManyDeclined < minSigners,
     isError: transaction.status === TransactionStatus.FAILED,
+    isCanceled: transaction.status === TransactionStatus.CANCELED,
+    isPendingProvider:
+      transaction.status === TransactionStatusWithOnOffRamp.PENDING_PROVIDER,
   };
 };
 
@@ -77,4 +96,30 @@ export const generateTransactionName = () => {
     transactionName += randomInt.toString();
   }
   return transactionName;
+};
+
+export const getTransactionIconComponent = ({
+  isDeploy,
+  isFromConnector,
+  isFromCLI,
+  isDeposit,
+  isSwap,
+  isLiquidStake,
+  isBridge,
+}: {
+  isDeploy: boolean;
+  isFromConnector: boolean;
+  isFromCLI: boolean;
+  isDeposit: boolean;
+  isSwap: boolean;
+  isLiquidStake: boolean;
+  isBridge: boolean;
+}) => {
+  if (isSwap) return SwapIcon;
+  if (isDeploy) return DeployIcon;
+  if (isLiquidStake) return LiquidStakeIcon;
+  if (isBridge) return BridgeIcon;
+  if (isFromConnector || isFromCLI) return ContractIcon;
+  if (isDeposit) return DownLeftArrowGreen;
+  return UpRightArrowYellow;
 };

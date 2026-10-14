@@ -1,178 +1,191 @@
 import {
   Box,
   Button,
-  DrawerProps,
-  FormControl,
-  FormLabel,
+  DrawerRootProps,
+  Field,
+  Icon,
   Input,
+  Loader,
   Text,
-  useDisclosure,
   VStack,
-} from '@chakra-ui/react';
+} from 'bako-ui';
 
-import { CustomSkeleton, Dialog } from '@/components';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import { CustomSkeleton, Dialog, IconTooltipButton } from '@/components';
+import { EyeCloseIcon } from '@/components/icons/eye-close';
+import { EyeOpenIcon } from '@/components/icons/eye-open';
+import { useWorkspaceContext } from '@/modules';
+import { useDisclosure } from '@/modules/core/hooks/useDisclosure';
 
 import { CreateVaultDialog } from '../dialog';
-import { VaultItemBox } from './box';
 import { useVaultDrawer } from './hook';
+import { VaultList } from './VaultList';
 
-interface VaultListModalProps extends Omit<DrawerProps, 'children'> {
+interface VaultListModalProps extends Omit<DrawerRootProps, 'children'> {
   vaultId: string;
   onSelect?: (vaultId: string) => void;
+  onCloseAll?: () => void;
 }
 
-const VaultListModal = ({ vaultId, ...props }: VaultListModalProps) => {
-  const {
-    screenSizes: { isMobile, isSmall },
-  } = useWorkspaceContext();
+const VaultListModal = ({
+  vaultId,
+  onCloseAll,
+  ...props
+}: VaultListModalProps) => {
   const {
     drawer,
     search,
     request: { vaults, isSuccess, isLoading, isFetching },
     inView,
   } = useVaultDrawer({
-    onClose: props.onClose,
-    isOpen: props.isOpen,
+    onClose: () => props.onOpenChange?.({ open: false }),
+    isOpen: props.open,
+    onCloseAll,
   });
 
   const {
+    workspaceInfos: {
+      infos: { visibleBalance },
+      handlers: { setVisibleBalance },
+    },
+  } = useWorkspaceContext();
+
+  const EyeIcon = visibleBalance ? EyeOpenIcon : EyeCloseIcon;
+
+  const handleToggleBalanceVisibility = () => {
+    setVisibleBalance(!visibleBalance);
+  };
+
+  const {
     isOpen: isCreateVaultModalOpen,
-    onClose: createVaultModalOnClose,
     onOpen: createVaultModalOnOpen,
+    onOpenChange: createVaultModalOnOpenChange,
   } = useDisclosure();
 
-  const isLoadingVaults = inView.inView
-    ? !isLoading
-    : !isLoading && !isFetching;
   return (
     <>
       <CreateVaultDialog
-        isOpen={isCreateVaultModalOpen}
-        onClose={createVaultModalOnClose}
+        open={isCreateVaultModalOpen}
+        onOpenChange={createVaultModalOnOpenChange}
+        onCreate={onCloseAll}
       />
 
       <Dialog.Modal
-        onClose={drawer.onClose}
-        isOpen={isCreateVaultModalOpen ? false : props.isOpen}
+        onOpenChange={(e) => (e.open ? undefined : drawer.onClose())}
+        open={props.open}
+        size={{ base: 'full', sm: 'md' }}
         modalContentProps={{
-          px: 10,
-          py: 10,
+          h: { base: '100dvh', sm: '780px' },
+          maxH: { base: '100dvh', sm: '780px' },
+          overflow: 'hidden',
         }}
       >
-        <Dialog.Body>
+        <Dialog.Body display="flex" flexDirection="column" flex={1} minH={0}>
           <Dialog.Header
             mt={0}
             mb={0}
             onClose={drawer.onClose}
             w="full"
-            maxW={{ base: 480, xs: 'unset' }}
-            title="Select vault"
-            description="Select the vault or create new one"
-            descriptionFontSize="12px"
+            title="Select account"
+            description="Select the account or create new one."
             titleSxProps={{
-              fontSize: '16px',
-              fontWeight: 700,
-              lineHeight: '19.36px',
+              fontSize: 'sm',
+              color: 'textPrimary',
+              lineHeight: 'shorter',
             }}
+            descriptionFontSize="xs"
+            descriptionColor="textSecondary"
           />
 
           <Box
             w="100%"
-            mt={6}
+            mt={{ base: 2, sm: 6 }}
             pb={6}
+            px="1px"
             borderBottomWidth={1}
-            borderColor="grey.425"
+            borderColor="gray.550"
           >
-            <FormControl>
+            <Field.Root display="flex" alignItems="center" flexDirection="row">
               <Input
-                placeholder=" "
+                placeholder="Search"
                 bg="transparent"
-                colorScheme="dark"
                 onChange={search.handler}
+                px={3}
               />
-              <FormLabel>Search</FormLabel>
-              {/* It is important that the Label comes after the Control due to css selectors */}
-            </FormControl>
+              <IconTooltipButton
+                tooltipContent={
+                  visibleBalance ? 'Hide Balance' : 'Show Balance'
+                }
+                buttonProps={{
+                  boxSize: '38px',
+                  minW: '38px',
+                  borderRadius: '6px',
+                  bg: 'gray.600',
+                }}
+                onClick={handleToggleBalanceVisibility}
+              >
+                <Icon
+                  as={EyeIcon}
+                  color="gray.200"
+                  w={visibleBalance ? '16px' : '12px'}
+                />
+              </IconTooltipButton>
+            </Field.Root>
           </Box>
 
           <VStack
             w="full"
-            minH={300}
-            maxH={{ base: 605, xs: 555, sm: 380, md: 500 }}
-            overflowY="scroll"
-            sx={{
-              '&::-webkit-scrollbar': {
-                display: 'none',
-              },
-              '&::-webkit-scrollbar-thumb': {
-                display: 'none',
-              },
+            flex={1}
+            minH={0}
+            overflowY="auto"
+            css={{
+              '&::-webkit-scrollbar': { display: 'none' },
+              '&::-webkit-scrollbar-thumb': { display: 'none' },
             }}
           >
             {isSuccess && !vaults.length && (
-              <Text variant="variant">
+              <Text my={4} fontSize="xs">
                 We {"couldn't"} find any results for <b>“{search.value}”</b> in
                 the vault.
               </Text>
             )}
 
-            <VStack spacing={4} w="full">
-              {!vaults.length && isFetching && (
-                <CustomSkeleton h="90px" w="full" />
+            <VStack marginBottom={4} w="full">
+              {isLoading && vaults.length === 0 && (
+                <VStack gap={4} w="full" pt={4}>
+                  <Loader size="md" borderWidth="4px" color="brand.500" />
+                </VStack>
               )}
-              <CustomSkeleton isLoaded={isLoadingVaults}>
-                {vaults?.map((vault) => {
-                  return (
-                    <VaultItemBox
-                      key={vault.id}
-                      mt={4}
-                      name={vault.name}
-                      address={vault.predicateAddress}
-                      root={vault.root}
-                      // workspace={vault.workspace}
-                      isActive={vaultId === vault.id}
-                      members={vault.members?.length}
-                      onClick={() => drawer.onSelectVault(vault)}
-                      // isSingleWorkspace={vault.workspace.single}
-                    />
-                  );
-                })}
+              <CustomSkeleton loading={isLoading}>
+                <VaultList
+                  vaults={vaults}
+                  currentVaultId={vaultId}
+                  onSelectVault={drawer.onSelectVault}
+                />
               </CustomSkeleton>
               <Box ref={inView.ref} />
+              {isFetching && vaults.length > 0 && (
+                <Box py={4}>
+                  <Loader size="sm" borderWidth="3px" color="brand.500" />
+                </Box>
+              )}
             </VStack>
           </VStack>
 
           <Dialog.Actions
-            position={isMobile ? 'absolute' : 'relative'}
-            bottom={0}
-            pb={isMobile && !isSmall ? 10 : 'unset'}
-            borderRadius={isMobile && !isSmall ? '20px' : 'unset'}
-            left={0}
-            right={0}
-            px={isMobile ? 10 : 'unset'}
-            bg={isMobile ? 'dark.950' : 'unset'}
-            sx={{
-              '&>hr': {
-                marginTop: '0',
-              },
-            }}
+            pt={6}
+            borderTopWidth={1}
+            borderColor="gray.550"
+            flexShrink={0}
           >
             <Button
-              fontSize="14px"
-              lineHeight="15.85px"
               fontWeight="normal"
               letterSpacing=".5px"
-              variant="outline"
-              color="grey.75"
-              borderColor="grey.75"
+              variant="subtle"
               w="full"
-              _hover={{
-                bg: '#f5f5f513',
-              }}
               onClick={createVaultModalOnOpen}
+              aria-label="Create new account"
             >
-              Create new vault
+              Create new account
             </Button>
           </Dialog.Actions>
         </Dialog.Body>

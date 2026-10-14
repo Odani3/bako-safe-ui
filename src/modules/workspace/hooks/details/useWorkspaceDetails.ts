@@ -1,9 +1,7 @@
-import type { BakoProvider } from 'bakosafe';
 import { useMemo, useState } from 'react';
 
 import { queryClient, setupAxiosInterceptors } from '@/config';
 import {
-  assetsMapFromFormattedFn,
   useAddressBook,
   useAuthUrlParams,
   useGetParams,
@@ -13,6 +11,7 @@ import {
   useVaultAssets,
   useVaultByIdRequest,
 } from '@/modules';
+import { useAssetMap } from '@/modules/assets-tokens/hooks/useAssetMap';
 import { useAuth } from '@/modules/auth';
 import { useTokensUSDAmountRequest } from '@/modules/home/hooks/useTokensUSDAmountRequest';
 import { useNetworks } from '@/modules/network/hooks';
@@ -27,11 +26,9 @@ const useWorkspaceDetails = () => {
   const { fuelsTokens, isLoading: isFuelTokensLoading } =
     useGetFuelsTokensListRequest();
 
-  const assetsMap = assetsMapFromFormattedFn(fuelsTokens);
-
   const [isTokenExpired, setIsTokenExpired] = useState(false);
-  const screenSizes = useScreenSize();
 
+  const screenSizes = useScreenSize();
   const authDetails = useAuth();
   const { isTxFromDapp } = useAuthUrlParams();
   const {
@@ -39,12 +36,11 @@ const useWorkspaceDetails = () => {
   } = useGetParams();
 
   const { currentNetwork } = useNetworks();
+  const { assetsMap, nftList } = useAssetMap(currentNetwork.chainId);
 
-  const providerInstance = useMemo<Promise<BakoProvider>>(async () => {
-    const provider = await ProviderInstance.create(currentNetwork.url);
-
-    return provider.instance;
-  }, [currentNetwork]);
+  const providerInstance = ProviderInstance.create(currentNetwork.url).then(
+    (res) => res.instance,
+  );
 
   // const {
   //   resetAllTransactionsTypeFilters,
@@ -136,6 +132,7 @@ const useWorkspaceDetails = () => {
     tokensUSD,
     fuelsTokens,
     assetsMap,
+    nftList,
     invalidateGifAnimationRequest,
     screenSizes,
     resetHomeRequests,

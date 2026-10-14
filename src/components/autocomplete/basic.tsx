@@ -1,37 +1,48 @@
 import {
   Box,
-  CircularProgress,
+  Field,
   Flex,
-  FormLabel,
+  floatingStyles,
   HStack,
   Input,
   InputGroup,
   InputGroupProps,
-  InputRightElement,
+  Loader,
   Text,
   VStack,
-} from '@chakra-ui/react';
+} from 'bako-ui';
 import {
   ChangeEvent,
+  ComponentProps,
   CSSProperties,
   LegacyRef,
   ReactNode,
+  Ref,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { InViewHookResponse } from 'react-intersection-observer';
 
 import { LineCloseIcon } from '../icons';
+
+interface MenuPosition {
+  top: number;
+  left: number;
+  width: number;
+}
 
 export interface AutocompleteOption {
   value: string;
   label: string;
 }
 
-interface AutocompleteProps extends Omit<InputGroupProps, 'onChange'> {
+interface AutocompleteProps
+  extends Omit<InputGroupProps, 'onChange' | 'children'> {
   label?: string;
+  ariaLabel?: string;
   value?: string;
   options?: AutocompleteOption[];
   disabled?: boolean;
@@ -51,12 +62,13 @@ interface AutocompleteProps extends Omit<InputGroupProps, 'onChange'> {
   actionOnSelect?: () => void;
   actionOnRemoveInput?: () => void;
   actionOnBlur?: () => void;
-  inputRef?: LegacyRef<HTMLInputElement>;
+  inputRef?: Ref<HTMLInputElement>;
+  inputProps?: Omit<ComponentProps<typeof Input>, 'onChange' | 'value' | 'ref'>;
 }
-// import { useCallback, useEffect, useRef, useState } from 'react';
 
 const Autocomplete = ({
   label,
+  ariaLabel,
   value,
   options,
   disabled,
@@ -72,15 +84,22 @@ const Autocomplete = ({
   optionsContainerRef,
   actionOnFocus = () => {},
   actionOnSelect = () => {},
-  actionOnRemoveInput = () => {},
+  // actionOnRemoveInput = () => {},
   actionOnBlur = () => {},
   inputRef,
+  inputProps,
   ...rest
 }: AutocompleteProps) => {
-  const [inputValue, setInputValue] = useState<string>('');
+  const [inputValue, setInputValue] = useState<string>(value ?? '');
   const [isFocused, setIsFocused] = useState<boolean>(false);
+  const [menuPosition, setMenuPosition] = useState<MenuPosition>({
+    top: 0,
+    left: 0,
+    width: 0,
+  });
 
   const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
+  const fieldRootRef = useRef<HTMLDivElement>(null);
 
   const displayedOptions =
     filterSelectedOption && options
@@ -135,19 +154,29 @@ const Autocomplete = ({
   const handleFocus = () => {
     actionOnFocus();
     setIsFocused(true);
-  };
 
-  const handleRemoveInput = () => {
-    actionOnRemoveInput();
+    // Check if field is still mounted
+    if (fieldRootRef.current) {
+      // Calculate menu position
+      const rect = fieldRootRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom,
+        left: rect.left,
+        width: rect.width,
+      });
+    }
   };
 
   const handleClear = () => {
-    setInputValue('');
     onChange('');
   };
 
   const handleOnBlur = () => {
     actionOnBlur();
+    setIsFocused(false);
+  };
+
+  const handlePaste = () => {
     setIsFocused(false);
   };
 
@@ -161,6 +190,36 @@ const Autocomplete = ({
   }, [value, options]);
 
   useEffect(() => {
+    if (!value) {
+      setInputValue('');
+      return;
+    }
+  }, [value]);
+
+  useEffect(() => {
+    if (!isFocused || !fieldRootRef.current) return;
+
+    const handleScroll = () => {
+      if (fieldRootRef.current) {
+        const rect = fieldRootRef.current.getBoundingClientRect();
+        setMenuPosition({
+          top: rect.bottom,
+          left: rect.left,
+          width: rect.width,
+        });
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { capture: true });
+    window.addEventListener('resize', handleScroll);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll, { capture: true });
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [isFocused]);
+
+  useEffect(() => {
     return () => {
       if (debounceTimeout.current) {
         clearTimeout(debounceTimeout.current);
@@ -169,40 +228,14 @@ const Autocomplete = ({
   }, []);
 
   return (
-    <>
-      <InputGroup {...rest}>
-        <Input
-          value={inputValue}
-          placeholder=" "
-          disabled={disabled}
-          autoComplete="off"
-          onChange={handleInputChange}
-          onBlur={handleOnBlur}
-          onFocus={handleFocus}
-          style={inputStyle}
-          ref={inputRef}
-          pr={10}
-          sx={{ pr: !disabled && rightElement ? '55px !important' : 'initial' }}
-        />
-
-        <FormLabel color="grey.500">{label}</FormLabel>
-
-        {!disabled && rightElement && (
-          <InputRightElement
-            pr={1}
-            top="1px"
-            right="1px"
-            borderRadius={10}
-            bgColor={rightElement ? 'grey.825' : 'transparent'}
-            h="calc(100% - 3px)"
-            w={showClearIcon && rightElement ? 16 : 10}
-            onClick={handleRemoveInput}
-          >
+    <Field.Root position="relative" ref={fieldRootRef}>
+      <InputGroup
+        endElement={
+          <>
             {isLoading && isFocused ? (
-              <CircularProgress
-                trackColor="dark.100"
-                size={18}
-                isIndeterminate
+              <Loader
+                css={{ '--spinner-track-color': 'dark.100' }}
+                w={18}
                 color="brand.500"
               />
             ) : (
@@ -218,65 +251,101 @@ const Autocomplete = ({
                 {rightElement}
               </HStack>
             )}
-          </InputRightElement>
-        )}
+          </>
+        }
+        {...rest}
+      >
+        <Input
+          aria-label={ariaLabel ?? 'Autocomplete Input'}
+          value={inputValue}
+          variant="subtle"
+          placeholder=" "
+          disabled={disabled}
+          autoComplete="off"
+          rounded="8px"
+          onChange={handleInputChange}
+          onBlur={handleOnBlur}
+          onPaste={handlePaste}
+          onFocus={handleFocus}
+          style={inputStyle}
+          ref={inputRef}
+          paddingInlineEnd={'2.2rem !important'}
+          {...inputProps}
+        />
       </InputGroup>
-
-      {isOpen && (
-        <Box
-          ref={optionsContainerRef}
-          bg="dark.200"
-          color="grey.200"
-          fontSize="md"
-          borderColor="dark.100"
-          borderWidth={1}
-          borderRadius={10}
-          padding={2}
-          position="absolute"
-          zIndex={300}
-          w="full"
-          mt={2}
+      {label && (
+        <Field.Label
+          color="grey.500"
+          css={floatingStyles({ hasValue: !!inputValue })}
         >
-          <Flex display="flex" justifyContent="center" alignItems="center">
-            <VStack
-              w="full"
-              maxH={194}
-              gap={0}
-              overflowY="scroll"
-              css={{
-                '&::-webkit-scrollbar': { width: '0' },
-                scrollbarWidth: 'none',
-              }}
-            >
-              {displayedOptions
-                .filter((option) => option.value !== value)
-                .map((option) => (
-                  <Box
-                    ref={optionsRef}
-                    key={option.value}
-                    w="full"
-                    p={2}
-                    borderRadius={10}
-                    cursor="pointer"
-                    _hover={{ background: 'dark.150' }}
-                    onMouseDown={() => handleSelect(option)}
-                  >
-                    <Text
-                      whiteSpace="nowrap"
-                      overflow="hidden"
-                      textOverflow="ellipsis"
-                      w="full"
-                    >
-                      {option.label}
-                    </Text>
-                  </Box>
-                ))}
-              <Box ref={inView?.ref} />
-            </VStack>
-          </Flex>
-        </Box>
+          {label}
+        </Field.Label>
       )}
-    </>
+
+      {isOpen &&
+        createPortal(
+          <Box
+            ref={optionsContainerRef}
+            bg="bg.muted"
+            color="gray.200"
+            fontSize="md"
+            borderColor="bg.panel"
+            borderWidth={1}
+            borderRadius="8px"
+            padding={2}
+            position="fixed"
+            zIndex={9000}
+            w={`${menuPosition.width}px`}
+            top={`${menuPosition.top}px`}
+            left={`${menuPosition.left}px`}
+            css={{ pointerEvents: 'auto' }}
+          >
+            <Flex display="flex" justifyContent="center" alignItems="center">
+              <VStack
+                w="full"
+                maxH={194}
+                gap={0}
+                overflowY="scroll"
+                css={{
+                  '&::-webkit-scrollbar': { width: '0' },
+                  scrollbarWidth: 'none',
+                }}
+              >
+                {displayedOptions
+                  .filter((option) => option.value !== value)
+                  .map((option) => (
+                    <Box
+                      ref={optionsRef}
+                      key={option.value}
+                      w="full"
+                      p={2}
+                      borderRadius="8px"
+                      cursor="pointer"
+                      _hover={{ background: 'bg.panel' }}
+                      pointerEvents="auto"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleSelect(option);
+                      }}
+                    >
+                      <Text
+                        whiteSpace="nowrap"
+                        overflow="hidden"
+                        textOverflow="ellipsis"
+                        w="full"
+                      >
+                        {option.label}
+                      </Text>
+                    </Box>
+                  ))}
+                <Box ref={inView?.ref} />
+              </VStack>
+            </Flex>
+          </Box>,
+          document.body,
+        )}
+    </Field.Root>
   );
 };
 

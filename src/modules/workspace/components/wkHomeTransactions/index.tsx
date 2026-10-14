@@ -1,28 +1,14 @@
-import {
-  Box,
-  Button,
-  Divider,
-  HStack,
-  Icon,
-  Spacer,
-  Text,
-} from '@chakra-ui/react';
-import { css } from '@emotion/react';
+import { Box, Button, Icon, Spacer, Text } from 'bako-ui';
 import { useEffect, useState } from 'react';
 import { MdKeyboardArrowRight } from 'react-icons/md';
 
 import { CustomSkeleton } from '@/components';
 import { EmptyState } from '@/components/emptyState';
 import { Pages, shakeAnimationX } from '@/modules/core';
-import {
-  TransactionCard,
-  TransactionCardMobile,
-  transactionStatus,
-  WaitingSignatureBadge,
-} from '@/modules/transactions';
+import { TransactionCard, WaitingSignatureBadge } from '@/modules/transactions';
 import { useTransactionsContext } from '@/modules/transactions/providers/TransactionsProvider';
 
-import { useWorkspaceContext } from '../../WorkspaceProvider';
+import { useWorkspaceContext } from '../../hooks';
 
 const WkHomeTransactions = () => {
   const [hasTransactions, setHasTransactions] = useState(false);
@@ -80,16 +66,8 @@ const WkHomeTransactions = () => {
         {hasTransactions && (
           <Button
             color="grey.75"
-            variant="txFilterType"
+            colorPalette="txFilterType"
             alignSelf={{ base: 'stretch', sm: 'flex-end' }}
-            rightIcon={
-              <Icon
-                as={MdKeyboardArrowRight}
-                fontSize="lg"
-                ml={isSmall ? -1 : 0}
-                className="btn-icon"
-              />
-            }
             onClick={() =>
               navigate(
                 Pages.userTransactions({
@@ -97,13 +75,19 @@ const WkHomeTransactions = () => {
                 }),
               )
             }
-            css={css`
+            css={`
               &:hover .btn-icon {
                 animation: ${shakeAnimationX} 0.5s ease-in-out;
               }
             `}
             px={isExtraSmall ? 3 : 4}
           >
+            <Icon
+              as={MdKeyboardArrowRight}
+              fontSize="lg"
+              ml={isSmall ? -1 : 0}
+              className="btn-icon"
+            />
             View all
           </Button>
         )}
@@ -112,61 +96,21 @@ const WkHomeTransactions = () => {
       {!isLoading && !transactions?.length && <EmptyState showAction={false} />}
 
       {transactions?.map((grouped) => (
-        <>
-          <HStack>
-            <Text
-              fontSize="sm"
-              fontWeight="semibold"
-              color="grey.425"
-              whiteSpace="nowrap"
-            >
-              {grouped.monthYear}
-            </Text>
-
-            <Divider w="full" borderColor="grey.950" />
-          </HStack>
-          <TransactionCard.List spacing={4} mt={isExtraSmall ? 0 : 7} mb={12}>
-            <CustomSkeleton isLoaded={!latestPredicates.isLoading}>
-              {grouped?.transactions.map((transaction) => {
-                const status = transactionStatus({
-                  ...transaction,
-                  account: userInfos?.address,
-                });
-                const isSigner = !!transaction.predicate?.members?.find(
-                  (member) => member.address === userInfos?.address,
-                );
-
-                return (
-                  <>
-                    {isMobile ? (
-                      <TransactionCardMobile
-                        isSigner={isSigner}
-                        transaction={transaction}
-                        account={userInfos?.address}
-                        mt="15px"
-                      />
-                    ) : (
-                      <TransactionCard.Container
-                        mb="12px"
-                        key={transaction.id}
-                        status={status}
-                        isSigner={isSigner}
-                        transaction={transaction}
-                        account={userInfos?.address}
-                        details={
-                          <TransactionCard.Details
-                            transaction={transaction}
-                            status={status}
-                          />
-                        }
-                      />
-                    )}
-                  </>
-                );
-              })}
+        <Box key={grouped.monthYear}>
+          <TransactionCard.GroupMonth monthYear={grouped.monthYear} />
+          <TransactionCard.List gap={4} mt={isExtraSmall ? 0 : 7} mb={12}>
+            <CustomSkeleton loading={latestPredicates.isLoading}>
+              {grouped?.transactions.map((transaction) => (
+                <TransactionCard.Item
+                  key={transaction.id}
+                  transaction={transaction}
+                  isMobile={isMobile}
+                  userInfos={userInfos}
+                />
+              ))}
             </CustomSkeleton>
           </TransactionCard.List>
-        </>
+        </Box>
       ))}
     </Box>
   );

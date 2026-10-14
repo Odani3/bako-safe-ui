@@ -1,15 +1,17 @@
+import { DialogRootProps } from 'bako-ui';
 import { useCallback } from 'react';
 
 import { queryClient } from '@/config';
 import { useQueryParams } from '@/modules/auth';
 import { Pages } from '@/modules/core';
 import { useCreateConnections } from '@/modules/dapp/hooks/useCreateConnection';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
 import { TabState, useCreateVault } from './useCreateVault';
 
 export interface UseCreateVaultDialogProps {
-  onClose: () => void;
+  onOpenChange?: DialogRootProps['onOpenChange'];
+  onCreate?: () => void;
 }
 
 export type UseCreateVaultDialogReturn = ReturnType<
@@ -20,10 +22,11 @@ const useCreateVaultDialog = (props: UseCreateVaultDialogProps) => {
   const {
     form,
     tabs,
-    vaultNameIsAvailable,
+    vaultNameAlreadyExists,
     vaultId,
     validateAddress,
     addresses,
+    bakoSafeVault,
     ...rest
   } = useCreateVault();
 
@@ -31,11 +34,13 @@ const useCreateVaultDialog = (props: UseCreateVaultDialogProps) => {
   const isSignInFromDapp = sessionId && sessionId.length === 36;
 
   const disableCreateVaultButton =
-    (!form.formState.isValid ||
-      !!form.formState.errors.addresses ||
-      form.formState.isSubmitting ||
-      validateAddress.isLoading) &&
-    addresses.fields.length > 1;
+    !form.formState.isValid ||
+    !!form.formState.errors.addresses ||
+    bakoSafeVault.isPending ||
+    validateAddress.isLoading;
+
+  const isCreateVaultButtonDisabled =
+    disableCreateVaultButton && addresses.fields.length > 1;
 
   const createConnectionsMutation = useCreateConnections();
   const {
@@ -59,8 +64,8 @@ const useCreateVaultDialog = (props: UseCreateVaultDialogProps) => {
     form.resetField('name');
     form.resetField('minSigners');
 
-    props.onClose();
-  }, [form, props, tabs]);
+    props.onOpenChange?.({ open: false });
+  }, [form, props, tabs, rest]);
 
   const close = (close_call: () => void, step?: TabState) => () => {
     const isValid = sessionId && name && origin && request_id;
@@ -84,28 +89,29 @@ const useCreateVaultDialog = (props: UseCreateVaultDialogProps) => {
       hide: false,
       disable: !form.formState.isValid,
       onContinue: () => tabs.set(TabState.ADDRESSES),
-      description:
-        'Define the name and description of this vault. These details will be visible to all members.',
+      title: 'Create account',
+      description: 'Define the name and description of this account.',
       onCancel: close(handleCancel),
       closeText: 'Cancel',
-      nextStepText: 'Continue',
+      nextStepText: 'Next',
     },
     [TabState.ADDRESSES]: {
       hide: false,
-      disable: disableCreateVaultButton,
+      disable: isCreateVaultButtonDisabled,
       onContinue: form.handleCreateVault,
-      description:
-        'Define the details of your vault. Set up this rules carefully because it cannot be changed later.',
+      title: 'Account signers',
+      description: 'Who is going to sign this vault?',
       onCancel: close(() => {
         tabs.set(TabState.INFO);
         close(handleCancel)();
       }),
       closeText: 'Cancel',
-      nextStepText: 'Create Vault',
+      nextStepText: 'Create Account',
     },
     [TabState.SUCCESS]: {
       hide: true,
       disable: false,
+      title: null,
       description: null,
       onContinue: () => {
         if (!isSignInFromDapp) {
@@ -115,7 +121,7 @@ const useCreateVaultDialog = (props: UseCreateVaultDialogProps) => {
               vaultId,
               workspaceId: userInfos?.workspace?.id,
             }),
-          );
+          ).then(props.onCreate);
         }
         handleClose();
       },
@@ -133,9 +139,10 @@ const useCreateVaultDialog = (props: UseCreateVaultDialogProps) => {
       step: stepActions[tabs.tab],
       actions: stepActions,
     },
-    vaultNameIsAvailable,
+    vaultNameAlreadyExists,
     validateAddress,
     addresses,
+    bakoSafeVault,
     ...rest,
   };
 };

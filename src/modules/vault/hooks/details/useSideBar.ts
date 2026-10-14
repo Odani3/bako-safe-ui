@@ -1,8 +1,8 @@
-import { useDisclosure } from '@chakra-ui/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { Pages } from '@/modules/core';
-import { useWorkspaceContext } from '@/modules/workspace/WorkspaceProvider';
+import { useDisclosure } from '@/modules/core/hooks/useDisclosure';
+import { useWorkspaceContext } from '@/modules/workspace/hooks';
 
 type UseSidebarProps = {
   params: { workspaceId: string; vaultId: string };
@@ -41,6 +41,24 @@ const useSidebar = ({ params }: UseSidebarProps) => {
     ),
     balance: checkPathname(
       Pages.vaultBalance({
+        vaultId: params?.vaultId ?? '',
+        workspaceId: workspace?.id ?? '',
+      }),
+    ),
+    bridge: checkPathname(
+      Pages.bridge({
+        vaultId: params?.vaultId ?? '',
+        workspaceId: workspace?.id ?? '',
+      }),
+    ),
+    buySell: checkPathname(
+      Pages.vaultBuySell({
+        vaultId: params?.vaultId ?? '',
+        workspaceId: workspace?.id ?? '',
+      }),
+    ),
+    swap: checkPathname(
+      Pages.vaultSwap({
         vaultId: params?.vaultId ?? '',
         workspaceId: workspace?.id ?? '',
       }),

@@ -5,7 +5,6 @@ pnpm-debug.log*
 lerna-debug.log*
 yarn.lock
 
-pnpm-lock.yaml
 node_modules
 dist
 dist-ssr
@@ -27,3 +26,8 @@ dist-ssr
 *.sw?
 src/dev
 .env
+
+# test
+test-results
+playwright-report
+.cache
